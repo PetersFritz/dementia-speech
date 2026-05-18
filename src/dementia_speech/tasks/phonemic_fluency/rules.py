@@ -1,6 +1,7 @@
 """Scoring rules for phonemic fluency (letter P)."""
 import re
 from typing import Set
+from nltk.corpus import wordnet
 try:
     from nltk.stem import PorterStemmer
     STEMMER = PorterStemmer()
@@ -9,6 +10,12 @@ except ImportError:
     HAS_STEMMER = False
     STEMMER = None
 
+def clean_word(word: str) -> str:
+    """Strip punctuation and whitespace from a word.
+    
+    e.g. "park," -> "park", "pet." -> "pet"
+    """
+    return re.sub(r'[^\w]', '', word).strip().lower()
 
 def starts_with_target_letter(word: str, target_letter: str = "p") -> bool:
     """Check if word starts with target letter (case-insensitive, orthographic).
@@ -36,6 +43,21 @@ def starts_with_target_letter(word: str, target_letter: str = "p") -> bool:
         return False
     
     return word_lower[0] == target_lower
+
+def is_nonword(word: str) -> bool:
+    """Check if word is not in WordNet.
+    
+    Parameters
+    ----------
+    word : str
+        Word to check
+        
+    Returns
+    -------
+    bool
+        True if word is NOT in WordNet (i.e. not a real word)
+    """
+    return len(wordnet.synsets(word.lower().strip())) == 0
 
 
 def is_repetition(word: str, previous_words: list[str]) -> bool:
@@ -142,7 +164,9 @@ def classify_word(
     str
         Classification: 'correct', 'intrusion', 'repetition', or 'variant'
     """
-    # Check in order of priority
+    word = clean_word(word)
+    previous_words = [clean_word(w) for w in previous_words]
+    
     if is_repetition(word, previous_words):
         return 'repetition'
     
@@ -151,5 +175,8 @@ def classify_word(
     
     if not starts_with_target_letter(word, target_letter):
         return 'intrusion'
+    
+    if is_nonword(word):
+        return 'nonword'
     
     return 'correct'

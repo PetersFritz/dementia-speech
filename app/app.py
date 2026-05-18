@@ -19,6 +19,7 @@ CLASSIFICATION_COLOURS = {
     "intrusion":  "#e74c3c",   # red
     "repetition": "#e67e22",   # orange
     "variant":    "#95a5a6",   # grey
+    "nonword": "#9b59b6",  # purple
 }
 
 CLASSIFICATION_LABELS = {
@@ -26,6 +27,7 @@ CLASSIFICATION_LABELS = {
     "intrusion":  "Intrusion",
     "repetition": "Repetition",
     "variant":    "Variant",
+    "nonword":    "Non-word",
 }
 
 # ── UI ────────────────────────────────────────────────────────────────────────
@@ -83,7 +85,12 @@ app_ui = ui.page_sidebar(
             ui.output_text("metric_variants"),
             theme="secondary",
         ),
-        col_widths=[2, 2, 2, 2, 2],
+        ui.value_box(
+            "Non-words",
+            ui.output_text("metric_nonwords"),
+            theme="secondary",
+        ),
+        col_widths=[2, 2, 2, 2, 2, 2],
     ),
     ui.hr(),
     ui.h5("Transcript"),
@@ -135,6 +142,11 @@ def server(input, output, session):
     def metric_variants():
         m = participant_metrics()
         return str(m.get("variants", "—"))
+    
+    @render.text
+    def metric_nonwords():
+        m = participant_metrics()
+        return str(m.get("nonwords", "—"))
 
     @render.ui
     def word_display():

@@ -33,3 +33,7 @@
 - Colours: correct=green, intrusion=red, repetition=orange, variant=grey
 - Deployment: runs on remote server, accessed via SSH port forwarding locally
 - Next: add temporal plot, IWI stats, then move to semantic fluency task
+
+## 2026-05-17: Word cleaning update
+- Filter empty intervals AFTER cleaning, not before
+- Catches space-only labels that slip through praatio's includeEmptyIntervals=False

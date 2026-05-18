@@ -15,6 +15,7 @@ def score_trial(
     - 'intrusion': doesn't start with target letter  
     - 'repetition': exact duplicate of earlier word
     - 'variant': morphological variant of earlier word
+    - 'nonword': not a valid English word (optional, requires wordnet)
     
     Parameters
     ----------
@@ -63,7 +64,8 @@ def compute_metrics(scored_df: pd.DataFrame) -> dict:
         - intrusions: number of intrusions
         - repetitions: number of repetitions
         - variants: number of variants
-        - errors: total errors (intrusions + repetitions + variants)
+        - nonwords: number of non-words
+        - errors: total errors (intrusions + repetitions + variants + nonwords)
     """
     if len(scored_df) == 0:
         return {
@@ -72,6 +74,7 @@ def compute_metrics(scored_df: pd.DataFrame) -> dict:
             'intrusions': 0,
             'repetitions': 0,
             'variants': 0,
+            'nonwords': 0,
             'errors': 0
         }
     
@@ -81,6 +84,7 @@ def compute_metrics(scored_df: pd.DataFrame) -> dict:
     intrusions = counts.get('intrusion', 0)
     repetitions = counts.get('repetition', 0)
     variants = counts.get('variant', 0)
+    nonwords = counts.get('nonword', 0)
     
     return {
         'total_words': len(scored_df),
@@ -88,5 +92,6 @@ def compute_metrics(scored_df: pd.DataFrame) -> dict:
         'intrusions': intrusions,
         'repetitions': repetitions,
         'variants': variants,
-        'errors': intrusions + repetitions + variants
+        'nonwords': nonwords,
+        'errors': intrusions + repetitions + variants + nonwords
     }

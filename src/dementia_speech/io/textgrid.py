@@ -2,6 +2,7 @@
 from pathlib import Path
 import pandas as pd
 from praatio import textgrid
+import re
 
 
 def load_word_tier(
@@ -20,10 +21,15 @@ def load_word_tier(
         )
     tier = tg.getTier(word_tier_name)
     rows = [
-        {"word": label.strip(), "start": start, "end": end, "duration": end - start}
-        for start, end, label in tier.entries
-        if label.strip()
-    ]
+    {
+        "word": re.sub(r'[^\w\s]', '', label).strip().lower(),
+        "start": start,
+        "end": end,
+        "duration": end - start
+    }
+    for start, end, label in tier.entries
+    if re.sub(r'[^\w\s]', '', label).strip()  # filter AFTER cleaning
+]
     df = pd.DataFrame(rows)
     df["iwi"] = df["start"].diff()  # inter-word interval to previous word
     return df
