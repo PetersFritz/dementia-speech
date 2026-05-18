@@ -37,3 +37,39 @@
 ## 2026-05-17: Word cleaning update
 - Filter empty intervals AFTER cleaning, not before
 - Catches space-only labels that slip through praatio's includeEmptyIntervals=False
+
+## 2026-05-18: End of day log
+
+### Completed today
+- [x] Set up repo structure and git/GitHub with SSH
+- [x] Built TextGrid parser (load_word_tier) with cleaning:
+      - Strip punctuation before scoring
+      - Filter empty/space-only intervals after cleaning
+- [x] Built phonemic fluency scoring pipeline:
+      - Rules: repetition → variant → intrusion → nonword → correct
+      - Letter P, variants excluded, proper nouns counted for now
+      - WordNet (en) for non-word detection
+      - NLTK PorterStemmer for variant detection
+- [x] Built pipeline script (score_pft.py) to score all PFT TextGrids
+      - Outputs pft_words.csv (word-level) and pft_metrics.csv (participant-level)
+      - Metadata joined via str.contains() on 3-digit participant ID
+- [x] Built minimal Shiny app (app.py):
+      - Colour-coded word transcript per participant
+      - Summary metric boxes (total, correct, intrusions, repetitions, variants, nonwords)
+      - 15-second temporal bin plot with group mean comparison lines (HC/MCI/Dementia)
+
+### Decisions made
+- Proper nouns: counted as correct — revisit after clinician consultation
+- Variants: excluded from correct count
+- Non-words: detected via WordNet, shown in purple
+- Temporal bins: 4 x 15s bins over 60s trial, correct words only
+- Metadata ID matching: str.contains() on 3-digit numeric ID
+
+### TODO — next session
+- [ ] Validate diagnosis matching (check no Unknowns remain)
+- [ ] Validate app runs via SSH port forwarding
+- [ ] Add clustering and switching (start with first-n-letters, then slope difference)
+- [ ] Revisit proper noun exclusion after clinician input
+- [ ] Add IWI statistics to metrics and app
+- [ ] Write pytest tests for scoring rules
+- [ ] Move to semantic fluency task pipeline
