@@ -2,6 +2,8 @@
 from pathlib import Path
 import pandas as pd
 from shiny import App, ui, render, reactive
+import plotly.graph_objects as go
+from shinywidgets import output_widget, render_widget
 
 # ── Data ──────────────────────────────────────────────────────────────────────
 DATA_DIR = Path(__file__).parent.parent / "data" / "processed"
@@ -95,6 +97,9 @@ app_ui = ui.page_sidebar(
     ui.hr(),
     ui.h5("Transcript"),
     ui.output_ui("word_display"),
+    ui.hr(),
+    ui.h5("Words per 15-Second Bin"),
+    output_widget("bin_plot"),
     title="Dementia Speech — Phonemic Fluency",
 )
 
@@ -184,6 +189,55 @@ def server(input, output, session):
             *word_spans,
             style="line-height: 2.8; padding: 12px;"
         )
+    
+    @render_widget
+    def bin_plot():
+        df = participant_metrics()
+        if not df:
+            return go.Figure()
+
+        bins = ['bin_1', 'bin_2', 'bin_3', 'bin_4']
+        bin_labels = ['0-15s', '15-30s', '30-45s', '45-60s']
+
+        group_means = metrics_df.groupby('diagnosis')[bins].mean()
+
+        fig = go.Figure()
+
+        colours = {'HC': '#2ecc71', 'MCI': '#e67e22', 'Dementia': '#e74c3c'}
+        for group, colour in colours.items():
+            if group in group_means.index:
+                fig.add_trace(go.Scatter(
+                    x=bin_labels,
+                    y=group_means.loc[group, bins].values,
+                    mode='lines+markers',
+                    name=group,
+                    line=dict(color=colour, width=2, dash='dash'),
+                    marker=dict(size=6),
+                ))
+
+        participant_bins = [df.get(b, 0) for b in bins]
+        fig.add_trace(go.Scatter(
+            x=bin_labels,
+            y=participant_bins,
+            mode='lines+markers',
+            name=f"Participant {input.participant()}",
+            line=dict(color='#2c3e50', width=3),
+            marker=dict(size=9),
+        ))
+
+        fig.update_layout(
+            xaxis_title="Time Bin",
+            yaxis_title="Correct Words",
+            legend=dict(orientation="h", y=-0.2),
+            margin=dict(t=20, b=20),
+            height=350,
+            plot_bgcolor='white',
+            yaxis=dict(gridcolor='#eee', rangemode='tozero'),
+            xaxis=dict(gridcolor='#eee'),
+        )
+
+        return fig
+
 
 
 app = App(app_ui, server)
