@@ -10,12 +10,6 @@ except ImportError:
     HAS_STEMMER = False
     STEMMER = None
 
-def clean_word(word: str) -> str:
-    """Strip punctuation and whitespace from a word.
-    
-    e.g. "park," -> "park", "pet." -> "pet"
-    """
-    return re.sub(r'[^\w]', '', word).strip().lower()
 
 def starts_with_target_letter(word: str, target_letter: str = "p") -> bool:
     """Check if word starts with target letter (case-insensitive, orthographic).
@@ -164,9 +158,7 @@ def classify_word(
     str
         Classification: 'correct', 'intrusion', 'repetition', or 'variant'
     """
-    word = clean_word(word)
-    previous_words = [clean_word(w) for w in previous_words]
-    
+    # Check in order of priority
     if is_repetition(word, previous_words):
         return 'repetition'
     

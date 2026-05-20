@@ -4,6 +4,8 @@ import pandas as pd
 from shiny import App, ui, render, reactive
 import plotly.graph_objects as go
 from shinywidgets import output_widget, render_widget
+import numpy as np
+from scipy import stats
 
 # ── Data ──────────────────────────────────────────────────────────────────────
 DATA_DIR = Path(__file__).parent.parent / "data" / "processed"
@@ -30,6 +32,12 @@ CLASSIFICATION_LABELS = {
     "repetition": "Repetition",
     "variant":    "Variant",
     "nonword":    "Non-word",
+}
+
+GROUP_COLOURS = {
+    "HC":       "#2ecc71",
+    "MCI":      "#e67e22",
+    "Dementia": "#e74c3c",
 }
 
 # ── UI ────────────────────────────────────────────────────────────────────────
@@ -98,8 +106,22 @@ app_ui = ui.page_sidebar(
     ui.h5("Transcript"),
     ui.output_ui("word_display"),
     ui.hr(),
+    ui.h5("Overall Performance vs Group Means"),
+    output_widget("summary_plot"),
+    ui.hr(),
     ui.h5("Words per 15-Second Bin"),
     output_widget("bin_plot"),
+    ui.div(
+        ui.h5("Metric profile", style="margin: 0 0 10px;"),
+        output_widget("radar_plot"),
+        style=(
+            "background: var(--bs-body-bg, white);"
+            "border: 1px solid #e0e0e0;"
+            "border-radius: 8px;"
+            "padding: 1rem 1.25rem;"
+            "margin-bottom: 1rem;"
+        )
+    ),
     title="Dementia Speech — Phonemic Fluency",
 )
 
@@ -237,7 +259,181 @@ def server(input, output, session):
         )
 
         return fig
+    
+    @render_widget
+    def summary_plot():
+        df = participant_metrics()
+        if not df:
+            return go.Figure()
 
+        metrics_to_show = ["correct", "intrusions", "repetitions"]
+        labels = ["Correct", "Intrusions", "Repetitions", "Variants", "Non-words"]
+        groups = ["HC", "MCI", "Dementia"]
+        colours = {"HC": "#1D9E75", "MCI": "#BA7517", "Dementia": "#D85A30"}
+
+        from plotly.subplots import make_subplots
+
+        fig = make_subplots(
+            rows=1,
+            cols=len(metrics_to_show),
+            subplot_titles=labels,
+            shared_yaxes=False,
+            horizontal_spacing=0.05,
+        )
+
+        for m_idx, metric in enumerate(metrics_to_show):
+            col = m_idx + 1
+
+            for group in groups:
+                group_data = metrics_df[metrics_df["diagnosis"] == group]
+                if len(group_data) == 0:
+                    continue
+                values = group_data[metric].dropna().values
+                if len(values) < 2:
+                    continue
+                mean = np.mean(values)
+                se = stats.sem(values)
+                ci = se * stats.t.ppf(0.975, df=len(values) - 1)
+                colour = colours[group]
+
+                fig.add_trace(go.Scatter(
+                    x=[group],
+                    y=[mean],
+                    error_y=dict(
+                        type="data",
+                        array=[ci],
+                        visible=True,
+                        color=colour,
+                        thickness=2,
+                        width=6,
+                    ),
+                    mode="markers",
+                    name=group,
+                    marker=dict(color=colour, size=10),
+                    showlegend=(m_idx == 0),  # only show legend once
+                ),
+                row=1, col=col)
+
+            # Participant horizontal line across the panel
+            participant_val = df.get(metric, 0)
+            fig.add_hline(
+                y=participant_val,
+                line=dict(color="#2c3e50", width=2),
+                row=1, col=col,
+                annotation_text="participant" if m_idx == len(metrics_to_show) - 1 else "",
+                annotation_font_size=10,
+            )
+
+        fig.update_layout(
+            height=320,
+            margin=dict(t=40, b=10, l=10, r=10),
+            plot_bgcolor="white",
+            legend=dict(orientation="h", y=-0.15),
+        )
+
+        fig.update_yaxes(gridcolor="#eee", rangemode="tozero")
+        fig.update_xaxes(showticklabels=False)
+
+        return fig
+    
+    @render_widget
+    def radar_plot():
+        df = participant_metrics()
+        if not df:
+            return go.Figure()
+
+        metrics_to_show = ["correct", "intrusions", "repetitions", "variants", "nonwords"]
+        labels = ["Correct", "Intrusions", "Repetitions", "Variants", "Non-words"]
+        groups = ["HC", "MCI", "Dementia"]
+        colours = {"HC": "#1D9E75", "MCI": "#BA7517", "Dementia": "#D85A30"}
+
+        # Per-metric scale: max of (all group means, participant value)
+        metric_maxes = {}
+        for m in metrics_to_show:
+            group_max = max(
+                metrics_df.groupby("diagnosis")[m].mean().max(),
+                1  # floor to avoid div by zero
+            )
+            participant_val = df.get(m, 0)
+            metric_maxes[m] = max(group_max, participant_val)
+
+            
+
+        def normalise(values):
+            return [v / metric_maxes[m] for v, m in zip(values, metrics_to_show)]
+
+        # Build display labels with max shown so clinician knows the scale
+        axis_labels = [
+            f"{label}<br><span style='font-size:9px'>(max {int(metric_maxes[m])})</span>"
+            for label, m in zip(labels, metrics_to_show)
+        ]
+
+        labels_closed = axis_labels + [axis_labels[0]]
+        fig = go.Figure()
+
+        # Group mean traces
+        for group in groups:
+            group_data = metrics_df[metrics_df["diagnosis"] == group]
+            if len(group_data) == 0:
+                continue
+            raw = [np.mean(group_data[m].dropna().values) for m in metrics_to_show]
+            norm = normalise(raw)
+            norm_closed = norm + [norm[0]]
+            colour = colours[group]
+
+            fig.add_trace(go.Scatterpolar(
+                r=norm_closed,
+                theta=labels_closed,
+                mode="lines",
+                name=group,
+                line=dict(color=colour, width=2, dash="dash"),
+                fill="toself",
+                fillcolor=f"rgba({int(colour[1:3],16)},{int(colour[3:5],16)},{int(colour[5:7],16)},0.07)",
+                hovertemplate=[
+                    f"{group}<br>{label}: {raw[i]:.1f}<extra></extra>"
+                    for i, label in enumerate(labels)
+                ] + [f"{group}<br>{labels[0]}: {raw[0]:.1f}<extra></extra>"],
+            ))
+
+        # Participant trace
+        participant_raw = [df.get(m, 0) for m in metrics_to_show]
+        participant_norm = normalise(participant_raw)
+        participant_closed = participant_norm + [participant_norm[0]]
+
+        fig.add_trace(go.Scatterpolar(
+            r=participant_closed,
+            theta=labels_closed,
+            mode="lines+markers",
+            name=f"Participant {input.participant()}",
+            line=dict(color="#2c3e50", width=3),
+            marker=dict(color="#2c3e50", size=8, symbol="diamond"),
+            fill="toself",
+            fillcolor="rgba(44,62,80,0.1)",
+            hovertemplate=[
+                f"Participant<br>{label}: {participant_raw[i]}<extra></extra>"
+                for i, label in enumerate(labels)
+            ] + [f"Participant<br>{labels[0]}: {participant_raw[0]}<extra></extra>"],
+        ))
+
+        fig.update_layout(
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, 1],
+                    tickvals=[0, 0.25, 0.5, 0.75, 1.0],
+                    ticktext=["0%", "25%", "50%", "75%", "100%"],
+                    gridcolor="#eee",
+                ),
+                angularaxis=dict(gridcolor="#eee"),
+                bgcolor="white",
+            ),
+            legend=dict(orientation="h", y=-0.15),
+            margin=dict(t=30, b=30, l=30, r=30),
+            height=420,
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+
+        return fig
 
 
 app = App(app_ui, server)
