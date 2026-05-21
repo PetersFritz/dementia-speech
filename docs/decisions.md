@@ -73,3 +73,67 @@
 - [ ] Add IWI statistics to metrics and app
 - [ ] Write pytest tests for scoring rules
 - [ ] Move to semantic fluency task pipeline
+
+## 2026-05-20: End of day log
+
+### Completed today
+
+#### TextGrid parsing
+- Added exclusion of bracketed annotations e.g. [laugh], [sigh] at read-in
+  via regex `^\[.*\]$`
+- Added exclusion of filled pauses: er, erm, um, umm, uhm, uh, oh, ah, mm, hmm, hm
+- Both exclusions happen at read-in in `load_word_tier` before any scoring
+
+#### Shiny app — major updates
+- Fixed indentation errors (mixed tabs/spaces) by rewriting app.py cleanly
+- Fixed Plotly fillcolor error — 8-digit hex not supported, switched to rgba()
+- Added `GROUP_COLOURS` dict at top of file, reused across all plots
+- Moved numpy and scipy imports to top of file
+
+#### Summary plot (performance vs group means)
+- Replaced line plot with small multiples — one panel per metric
+- Each panel shows HC/MCI/Dementia group means with 95% CI error bars
+- Participant shown as dashed horizontal line + diamond marker
+- Tighter horizontal spacing (0.06) between panels
+- Participant marker changed to thick solid line + diamond for visibility
+
+#### Bin plot (words per 15s)
+- Kept as line plot (preferred over grouped bars)
+- Group mean lines in HC/MCI/Dementia colours
+- Participant shown as thicker dark line
+
+#### Radar chart — added new
+- Shows all five metrics: correct, intrusions, repetitions, variants, non-words
+- Normalisation rules:
+  - Axis ceiling = highest group mean for that metric
+  - If participant exceeds group ceiling, axis expands to participant value
+- Intrusions and repetitions inverted (1 - normalised value) so larger
+  shape always means better performance
+- Inverted axes labelled with "(inverted)" so clinician is not misled
+- Group means shown as dashed lines with light fill
+- Participant shown as solid dark line with diamond markers
+- Hover tooltips show raw values not normalised values
+
+#### Non-word detection
+- WordNet approach confirmed and implemented
+- Punctuation stripping fixed — filter applied after cleaning not before
+  to catch space-only intervals
+
+### Decisions made
+- Filled pauses excluded at read-in, not treated as errors
+- Bracketed annotations excluded at read-in
+- Radar chart: lower-is-better metrics (intrusions, repetitions) inverted
+- Radar normalisation: per-metric scale based on max group mean,
+  expanding to participant value if they exceed it
+- Line plot kept for temporal bins (preferred over grouped bars)
+- Small multiples preferred over overlapping dot plot for metric comparison
+
+### TODO — next session
+- [ ] Validate filled pause exclusion list against annotator conventions
+- [ ] Run notebook check: non-P words appearing before scoring
+- [ ] Come back to clustering (first-n-letters then slope difference)
+- [ ] Add IWI statistics to metrics and app
+- [ ] Write pytest tests for scoring rules
+- [ ] Revisit proper noun exclusion after clinician consultation
+- [ ] Move to semantic fluency task pipeline
+- [ ] Commit and push all changes from today
