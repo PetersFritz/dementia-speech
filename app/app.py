@@ -318,7 +318,7 @@ def server(input, output, session):
             participant_val = df.get(metric, 0)
             fig.add_hline(
                 y=participant_val,
-                line=dict(color="#2c3e50", width=2),
+                line=dict(color="#ff0101", width=2, dash="dash"),
                 row=1, col=col,
                 annotation_text="participant" if m_idx == len(metrics_to_show) - 1 else "",
                 annotation_font_size=10,
