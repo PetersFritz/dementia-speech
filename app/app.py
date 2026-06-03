@@ -23,7 +23,6 @@ CLASSIFICATION_COLOURS = {
     "intrusion":  "#e74c3c",   # red
     "repetition": "#e67e22",   # orange
     "variant":    "#95a5a6",   # grey
-    "nonword": "#9b59b6",  # purple
 }
 
 CLASSIFICATION_LABELS = {
@@ -31,7 +30,6 @@ CLASSIFICATION_LABELS = {
     "intrusion":  "Intrusion",
     "repetition": "Repetition",
     "variant":    "Variant",
-    "nonword":    "Non-word",
 }
 
 GROUP_COLOURS = {
@@ -95,12 +93,7 @@ app_ui = ui.page_sidebar(
             ui.output_text("metric_variants"),
             theme="secondary",
         ),
-        ui.value_box(
-            "Non-words",
-            ui.output_text("metric_nonwords"),
-            theme="secondary",
-        ),
-        col_widths=[2, 2, 2, 2, 2, 2],
+        col_widths=[2, 2, 2, 2, 2],
     ),
     ui.hr(),
     ui.h5("Transcript"),
@@ -169,11 +162,6 @@ def server(input, output, session):
     def metric_variants():
         m = participant_metrics()
         return str(m.get("variants", "—"))
-    
-    @render.text
-    def metric_nonwords():
-        m = participant_metrics()
-        return str(m.get("nonwords", "—"))
 
     @render.ui
     def word_display():
@@ -233,7 +221,7 @@ def server(input, output, session):
                     y=group_means.loc[group, bins].values,
                     mode='lines+markers',
                     name=group,
-                    line=dict(color=colour, width=2, dash='dash'),
+                    line=dict(color=colour, width=3, dash='dash'),
                     marker=dict(size=6),
                 ))
 
@@ -267,7 +255,7 @@ def server(input, output, session):
             return go.Figure()
 
         metrics_to_show = ["correct", "intrusions", "repetitions"]
-        labels = ["Correct", "Intrusions", "Repetitions", "Variants", "Non-words"]
+        labels = ["Correct", "Intrusions", "Repetitions", "Variants"]
         groups = ["HC", "MCI", "Dementia"]
         colours = {"HC": "#1D9E75", "MCI": "#BA7517", "Dementia": "#D85A30"}
 
@@ -318,7 +306,7 @@ def server(input, output, session):
             participant_val = df.get(metric, 0)
             fig.add_hline(
                 y=participant_val,
-                line=dict(color="#ff0101", width=2, dash="dash"),
+                line=dict(color="#ff0101", width=4, dash="dash"),
                 row=1, col=col,
                 annotation_text="participant" if m_idx == len(metrics_to_show) - 1 else "",
                 annotation_font_size=10,
@@ -342,8 +330,8 @@ def server(input, output, session):
         if not df:
             return go.Figure()
 
-        metrics_to_show = ["correct", "intrusions", "repetitions", "variants", "nonwords"]
-        labels = ["Correct", "Intrusions", "Repetitions", "Variants", "Non-words"]
+        metrics_to_show = ["correct", "intrusions", "repetitions", "variants"]
+        labels = ["Correct", "Intrusions", "Repetitions", "Variants"]
         groups = ["HC", "MCI", "Dementia"]
         colours = {"HC": "#1D9E75", "MCI": "#BA7517", "Dementia": "#D85A30"}
 

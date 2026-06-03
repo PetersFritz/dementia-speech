@@ -84,7 +84,7 @@ def compute_metrics(scored_df: pd.DataFrame) -> dict:
     intrusions = counts.get('intrusion', 0)
     repetitions = counts.get('repetition', 0)
     variants = counts.get('variant', 0)
-    nonwords = counts.get('nonword', 0)
+
     
     return {
         'total_words': len(scored_df),
@@ -92,6 +92,5 @@ def compute_metrics(scored_df: pd.DataFrame) -> dict:
         'intrusions': intrusions,
         'repetitions': repetitions,
         'variants': variants,
-        'nonwords': nonwords,
-        'errors': intrusions + repetitions + variants + nonwords
+        'errors': intrusions + repetitions + variants 
     }

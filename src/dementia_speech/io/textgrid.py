@@ -6,7 +6,7 @@ from praatio import textgrid
 
 # Filled pauses and discourse markers to exclude
 FILLED_PAUSES = {
-    "er", "erm", "um", "umm", "uhm", "uh", "oh", "ah", "mm", "hmm", "hm"
+    "er", "erm", "um", "umm", "uhm", "uh", "oh", "ah", "mm", "hmm", "hm", "err", "uhh", "uhhh", "ummm", "uhmmm"
 }
 
 

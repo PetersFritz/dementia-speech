@@ -159,16 +159,20 @@ def classify_word(
         Classification: 'correct', 'intrusion', 'repetition', or 'variant'
     """
     # Check in order of priority
+
+    if not starts_with_target_letter(word, target_letter):
+        return 'intrusion'
+    
+    if len(word) <= 1:
+        return 'intrusion'
+    
+    if is_nonword(word):
+        return 'intrusion'
+
     if is_repetition(word, previous_words):
         return 'repetition'
     
     if is_variant(word, previous_words):
         return 'variant'
-    
-    if not starts_with_target_letter(word, target_letter):
-        return 'intrusion'
-    
-    if is_nonword(word):
-        return 'nonword'
     
     return 'correct'
