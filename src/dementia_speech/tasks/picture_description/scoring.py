@@ -49,10 +49,7 @@ def extract_information_units(
 ) -> dict:
     """Extract information units from a transcript using synonym matching.
 
-    For each IU, checks whether any synonym appears in the transcript.
-    Returns a dict with:
-    - present: bool — whether the IU was mentioned
-    - evidence: list[str] — which synonyms were found
+    Tracks position of first match so IUs can be ordered by appearance.
 
     Parameters
     ----------
@@ -64,21 +61,51 @@ def extract_information_units(
     Returns
     -------
     dict
-        {IU_name: {"present": bool, "evidence": [matched terms]}}
+        {IU_name: {"present": bool, "evidence": [matched terms], "position": int}}
+        position is the character index of the first match in the transcript,
+        or None if not present.
     """
     results = {}
     for iu, terms in synonyms.items():
         matched = []
+        first_position = None
+
         for term in terms:
-            # Whole-word match to avoid e.g. "dish" matching "dishcloth"
             pattern = r'\b' + re.escape(term) + r'\b'
-            if re.search(pattern, transcript):
+            match = re.search(pattern, transcript)
+            if match:
                 matched.append(term)
+                # Track earliest position across all synonyms
+                if first_position is None or match.start() < first_position:
+                    first_position = match.start()
+
         results[iu] = {
-            "present": len(matched) > 0,
+            "present":  len(matched) > 0,
             "evidence": matched,
+            "position": first_position,
         }
     return results
+
+def get_iu_sequence(iu_results: dict) -> list[str]:
+    """Return IUs in the order they first appear in the transcript.
+
+    Parameters
+    ----------
+    iu_results : dict
+        Output from extract_information_units
+
+    Returns
+    -------
+    list[str]
+        IU names ordered by first appearance position
+    """
+    mentioned = [
+        (iu, data["position"])
+        for iu, data in iu_results.items()
+        if data["present"]
+    ]
+    mentioned.sort(key=lambda x: x[1])
+    return [iu for iu, _ in mentioned]
 
 
 def compute_iu_metrics(iu_results: dict) -> dict:
