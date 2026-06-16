@@ -27,106 +27,96 @@ SYNONYMS = {
 }
 
 def load_transcript(path: Path) -> str:
-    """Load a plain text transcript file.
-
-    Parameters
-    ----------
-    path : Path
-        Path to .txt transcript file
-
-    Returns
-    -------
-    str
-        Raw transcript text, lowercased and stripped
-    """
+    """Load a plain text transcript file, lowercased and stripped."""
     with open(path, "r", encoding="utf-8") as f:
         return f.read().strip().lower()
-
-
+ 
+ 
 def extract_information_units(
     transcript: str,
     synonyms: dict = SYNONYMS,
 ) -> dict:
     """Extract information units from a transcript using synonym matching.
-
-    Tracks position of first match so IUs can be ordered by appearance.
-
-    Parameters
-    ----------
-    transcript : str
-        Lowercased transcript text
-    synonyms : dict
-        Mapping of IU name to list of synonyms
-
+ 
+    Finds ALL mentions of each IU (every synonym occurrence), not just the
+    first, so that repeat-aware sequence and cycle metrics are possible.
+ 
     Returns
     -------
     dict
-        {IU_name: {"present": bool, "evidence": [matched terms], "position": int}}
-        position is the character index of the first match in the transcript,
-        or None if not present.
+        {IU_name: {
+            "present": bool,
+            "evidence": [matched terms],
+            "positions": [character indices of every match, sorted],
+            "count": number of mentions
+        }}
     """
     results = {}
     for iu, terms in synonyms.items():
-        matched = []
-        first_position = None
-
+        matched_terms = []
+        positions = []
+ 
         for term in terms:
             pattern = r'\b' + re.escape(term) + r'\b'
-            match = re.search(pattern, transcript)
-            if match:
-                matched.append(term)
-                # Track earliest position across all synonyms
-                if first_position is None or match.start() < first_position:
-                    first_position = match.start()
-
+            for match in re.finditer(pattern, transcript):
+                positions.append(match.start())
+                matched_terms.append(term)
+ 
+        positions.sort()
         results[iu] = {
-            "present":  len(matched) > 0,
-            "evidence": matched,
-            "position": first_position,
+            "present": len(positions) > 0,
+            "evidence": sorted(set(matched_terms)),
+            "positions": positions,
+            "count": len(positions),
         }
     return results
-
-def get_iu_sequence(iu_results: dict) -> list[str]:
-    """Return IUs in the order they first appear in the transcript.
-
-    Parameters
-    ----------
-    iu_results : dict
-        Output from extract_information_units
-
-    Returns
-    -------
-    list[str]
-        IU names ordered by first appearance position
+ 
+ 
+def get_iu_sequence_unique(iu_results: dict) -> list:
+    """Return each mentioned IU once, ordered by first appearance.
+ 
+    Use for: display, IU coverage, first-appearance ordering.
     """
-    mentioned = [
-        (iu, data["position"])
+    first_positions = [
+        (iu, data["positions"][0])
         for iu, data in iu_results.items()
         if data["present"]
     ]
-    mentioned.sort(key=lambda x: x[1])
-    return [iu for iu, _ in mentioned]
-
-
+    first_positions.sort(key=lambda x: x[1])
+    return [iu for iu, _ in first_positions]
+ 
+ 
+def get_iu_sequence_full(iu_results: dict) -> list:
+    """Return the full mention sequence with repeats, ordered by position.
+ 
+    Use for: graph construction, cycle and self-cycle metrics, path distance.
+ 
+    Every occurrence of every IU is included and the whole list is sorted
+    by character position in the transcript, so the order reflects how the
+    participant actually moved between concepts, including revisits.
+    """
+    mentions = []
+    for iu, data in iu_results.items():
+        for pos in data["positions"]:
+            mentions.append((pos, iu))
+    mentions.sort(key=lambda x: x[0])
+    return [iu for _, iu in mentions]
+ 
+ 
 def compute_iu_metrics(iu_results: dict) -> dict:
-    """Compute summary metrics from IU extraction results.
-
-    Parameters
-    ----------
-    iu_results : dict
-        Output from extract_information_units
-
+    """Compute summary coverage metrics from IU extraction results.
+ 
     Returns
     -------
     dict
-        total_ius: total number of IUs in the scoring scheme
-        mentioned_ius: number of IUs mentioned by participant
-        iu_score: proportion of IUs mentioned (0-1)
+        total_ius, mentioned_ius, iu_score, total_mentions
     """
     total = len(iu_results)
     mentioned = sum(1 for v in iu_results.values() if v["present"])
+    total_mentions = sum(v["count"] for v in iu_results.values())
     return {
         "total_ius": total,
         "mentioned_ius": mentioned,
         "iu_score": round(mentioned / total, 3) if total > 0 else 0,
+        "total_mentions": total_mentions,
     }
