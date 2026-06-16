@@ -13,8 +13,8 @@ from dementia_speech.tasks.picture_description.scoring import (
     compute_iu_metrics,
 )
 
-TRANSCRIPT_DIR = Path("data/raw/transcripts/cookie_theft")  # adjust to your path
-METADATA_PATH  = Path("data/raw/metadata.csv")
+TRANSCRIPT_DIR = Path("data/raw/text/CTD")  # adjust to your path
+METADATA_PATH  = Path("data/raw/meta-info.csv")
 OUTPUT_IU      = Path("data/processed/cookie_theft_iu.csv")
 OUTPUT_METRICS = Path("data/processed/cookie_theft_metrics.csv")
 
