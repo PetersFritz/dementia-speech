@@ -137,3 +137,11 @@
 - [ ] Revisit proper noun exclusion after clinician consultation
 - [ ] Move to semantic fluency task pipeline
 - [ ] Commit and push all changes from today
+
+## 2026-06-16
+markdown## Cookie Theft graph metrics
+- Graph metrics computed on full repeat-aware sequence (get_iu_sequence_full)
+- IU coverage uses unique first-appearance sequence (get_iu_sequence_unique)
+- Limitation: synonym matching only catches lexical repeats, not pronoun
+  references (e.g. "he" for boy) — cycle metrics undercount revisits vs human annotator
+- Image dimensions read automatically via PIL
