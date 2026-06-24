@@ -26,6 +26,7 @@ from PIL import Image
 
 # ── Image and coordinate config ────────────────────────────────────────────
 IMAGE_PATH = "/Volumes/shared/spandh_bessemer/SPandhAndHealthcare/Fritz/Interspeech2026/data/pictures/CookieTheft.png"
+#IMAGE_PATH = "/mnt/xdrive/spandh_bessemer/SPandhAndHealthcare/Fritz/Interspeech2026/data/pictures/CookieTheft.png"
 IMAGE_HEIGHT = 592  # used for the metric-convention y-flip
 
 # Raw annotation coordinates (origin top-left, y downward)

@@ -150,8 +150,13 @@ shiny run app/app.py --reload
 
 Select a participant from the sidebar to view:
 
-- **Phonemic Fluency tab:** colour-coded word transcript, summary metric boxes, temporal bin plot (words per 15s), small-multiple comparison against group means (HC / MCI / Dementia), and a radar chart normalised by group ceiling values.
-- **Cookie Theft tab:** highlighted transcript showing matched IU terms, IU coverage summary boxes, interactive spatio-semantic graph overlaid on the Cookie Theft image, and small-multiple metric comparison against group means.
+**Phonemic Fluency tab:** colour-coded word transcript, summary metric boxes, temporal bin plot (words per 15s), small-multiple comparison against group means (HC / MCI / Dementia), and a radar chart normalised by group ceiling values.
+
+![Phonemic Fluency screen](docs/images/PFT_screen.png)
+
+**Cookie Theft tab:** highlighted transcript showing matched IU terms, IU coverage summary boxes, interactive spatio-semantic graph overlaid on the Cookie Theft image, and small-multiple metric comparison against group means.
+
+![Cookie Theft screen](docs/images/CTD_screen.png)
 
 ---
 
