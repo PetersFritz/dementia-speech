@@ -7,6 +7,8 @@ A research toolkit for scoring and visualising speech biomarkers from dementia-r
 
 The pipeline scores both tasks, extracts linguistic and spatial-navigational features, and displays per-participant results in an interactive dashboard for clinical or research review.
 
+**The work is under progress and this repo does not describe a finished project**
+
 ---
 
 ## Project structure
@@ -160,22 +162,6 @@ Select a participant from the sidebar to view:
 
 ---
 
-## Development
-
-Run tests:
-
-```bash
-pytest
-```
-
-Lint / format:
-
-```bash
-ruff check .
-ruff format .
-```
-
----
 
 ## Known limitations
 
