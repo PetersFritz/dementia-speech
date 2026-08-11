@@ -162,6 +162,28 @@ Select a participant from the sidebar to view:
 
 ---
 
+## Human evaluation study
+
+A separate Shiny app (`app/study_app.py`) runs a blinded online evaluation: a
+rater follows a personal link, works through 20 TEST-split cases making a
+diagnosis guess + confidence rating per case, then is pointed to a final
+qualitative questionnaire. It reuses the dashboard tabs above unmodified —
+they never render a participant's true diagnosis — but replaces the sidebar
+participant picker with a fixed, per-rater case sequence.
+
+```bash
+shiny run app/study_app.py --reload
+```
+
+then visit `http://127.0.0.1:8000/?token=<any-token>` locally to try it (any
+string of 8+ letters/digits/`-`/`_` works as a token in dev).
+
+See `docs/study_protocol.md` for the study design decisions, `study/README.md`
+for setting up the consent Google Form and Apps Script, and
+`docs/study_hosting.md` for exposing the app to the public internet.
+
+---
+
 
 ## Known limitations
 
