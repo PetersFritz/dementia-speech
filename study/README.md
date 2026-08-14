@@ -8,19 +8,30 @@ design and `docs/study_hosting.md` for exposing the server publicly.
 ## 1. Consent Google Form
 
 1. Create a Google Form with your information sheet and consent questions.
-2. **Settings > Responses > Collect email addresses** — turn this on. The
-   Apps Script below relies on Google's verified respondent email rather than
-   a free-text field.
+2. **Settings > Responses > Collect email addresses** — turn this on, and set
+   it to **"Responder input"**, not "Verified". "Verified" auto-fills the
+   respondent's address but requires them to sign in with a Google account
+   first, which we don't want to require of participants; "Responder input"
+   lets them type their email address directly, no sign-in needed. The Apps
+   Script below reads whichever of the two was collected.
 3. **Responses tab > green Sheets icon** — link the form to a new Google
    Sheet, if not already linked.
 4. **Extensions > Apps Script** (from the Form editor). Create a new script
    file and paste in the contents of `study/consent_form/onSubmit.gs`.
-5. Edit the constants at the top of the script:
+5. Upload the finalised participant information sheet as a PDF to Google
+   Drive (readable by whichever Google account will run the script), open
+   it, and copy the file ID out of its URL
+   (`https://drive.google.com/file/d/<FILE_ID>/view`).
+6. Edit the constants at the top of the script:
    - `STUDY_BASE_URL` — the public URL of the study server (see
      `docs/study_hosting.md`; you'll need this set up first, or come back and
      fill it in once you have it).
    - `SENDER_NAME` — signs the invitation email.
-6. **Set up the trigger** — this must be an *installable* trigger, not a
+   - `INFO_SHEET_PDF_ID` — the Drive file ID from the step above. The
+     confirmation email attaches this PDF and lists back the respondent's
+     answers to every form item, so it doubles as their copy of the
+     information sheet and their record of consent.
+7. **Set up the trigger** — this must be an *installable* trigger, not a
    simple one, because sending email requires authorization that simple
    triggers don't have:
    - In the Apps Script editor, open **Triggers** (clock icon in the left
@@ -29,8 +40,10 @@ design and `docs/study_hosting.md` for exposing the server publicly.
      `From form`, event type: `On form submit`. Save.
    - Google will prompt you to authorize the script (send email, access the
      spreadsheet) — accept as the form owner.
-7. Submit a test response to the form yourself and confirm you receive the
-   study-link email and that a `token` column appears in the Sheet.
+8. Submit a test response to the form yourself and confirm you receive the
+   study-link email — with the information sheet PDF attached and your
+   consent answers listed back to you — and that a `token` column appears
+   in the Sheet.
 
 ## 2. Qualitative questionnaire (post-study)
 
