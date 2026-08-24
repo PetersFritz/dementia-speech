@@ -3,14 +3,14 @@
 ## General 
 
 ### Difference between static and fluid cluster 
-- Described by Zemla et al., 2020 
+- Described by Zemla et al., 2020 http://link.springer.com/10.3758/s13428-019-01343-w
 - Static cluster 
     -  A static cluster switch occurs whenever the next word does not share a category label with any of the previous words since the start of the last cluster
 - fluid cluster 
     - A fluid cluster switch occurs when the next word in a list does not share a category label with the previous word. 
 
 ### Slope difference algorithm 
-- Ref: Bushnell et al., 2023 
+- Ref: Bushnell et al., 2023 https://www.sciencedirect.com/science/article/pii/S0167639323001243 
 - The slope difference algorithm uses word onset times only to identify clusters and switches.
 - An exponential curve is fitted to each participant's cumulative word output over time.
 - For each consecutive word pair, the actual inter-word interval is compared to the curve's predicted slope at the midpoint between them.
@@ -28,7 +28,7 @@
     - Inter-group similarity — a switch is marked where the average pairwise similarity of all words in the current cluster falls below that of a random set of words (based on 1,000 random samples).
 
 ### Backlink model 
-- Ref: Kim et al., 2019 
+- Ref: Kim et al., 2019 https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2019.01020/full
 - Uses Wikipedia's backlink structure (which pages link to a given page) as a language-agnostic alternative to manually curated resources like WordNet, with coverage across 100+ languages.
 - Based on the intuition that a Wikipedia article on a focused topic represents a natural cluster context — e.g., an article on "Burrow" linking to Rabbit, Groundhog, and Meerkat implies those animals form a cluster.
 - Switches are identified by comparing the backlink lists of consecutive words in a fluency sequence:
