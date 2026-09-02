@@ -4,10 +4,7 @@ import re
 import pandas as pd
 from praatio import textgrid
 
-# Filled pauses and discourse markers to exclude
-FILLED_PAUSES = {
-    "er", "erm", "um", "umm", "uhm", "uh", "oh", "ah", "mm", "hmm", "hm", "err", "uhh", "uhhh", "ummm", "uhmmm"
-}
+from dementia_speech.io.cleaning import clean_token
 
 
 def load_word_tier(
@@ -19,7 +16,12 @@ def load_word_tier(
     Excludes:
     - Empty or whitespace-only intervals
     - Annotations in square brackets e.g. [laugh], [sigh]
-    - Filled pauses e.g. er, erm, um, umm, uhm, oh
+
+    Filled pauses (er, um, uh, ...) and discourse markers (well, so, right,
+    yeah, no, ...) are NOT excluded here -- they're kept as ordinary rows
+    and classified downstream (e.g. PFT_new.scoring assigns filled pauses
+    the Leslie 'F' code; discourse markers fall through the normal
+    classification hierarchy).
 
     Returns columns: word, start, end, duration, iwi.
     """
@@ -37,15 +39,10 @@ def load_word_tier(
         if re.match(r'^\[.*\]$', label.strip()):
             continue
 
-        # Clean punctuation
-        cleaned = re.sub(r'[^\w\s]', '', label).strip().lower()
+        cleaned = clean_token(label)
 
         # Skip empty after cleaning
         if not cleaned:
-            continue
-
-        # Skip filled pauses
-        if cleaned in FILLED_PAUSES:
             continue
 
         rows.append({
