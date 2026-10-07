@@ -1,30 +1,11 @@
 """Information unit extraction for Cookie Theft picture description task."""
 
-import re 
+import re
 from pathlib import Path
 
-SYNONYMS = {
-    "Boy": ["boy", "son", "brother", "male child"],
-    "Girl": ["girl", "daughter", "sister", "female child"],
-    "Woman": ["woman","mom", "mother", "lady", "parent", "female", "adult", "grownup", "mum"],
-    "Kitchen": ["kitchen", "room"],
-    "Cookie": ["cookie", "biscuit", "cake", "treat"],
-    "Jar": ["jar", "container", "crock", "pot"],
-    "Stool": ["stool", "seat", "chair", "ladder"],
-    "Sink": ["sink", "basin", "washbasin", "washbowl", "washstand", "tap"],
-    "Plate": ["plate"],
-    "Dishcloth": ["dishcloth", "dishrag", "rag", "cloth", "napkin", "towel"],
-    "Water": ["water", "dishwater", "liquid"],
-    "Window": ["window", "frame", "glass"],
-    "Cupboard": ["cupboard", "closet", "shelf"],
-    "Dishes": ["dish", "dishes", "cup", "cups", "counter"],
-    "Curtains": ["curtain", "curtains", "drape", "drapes", "drapery", "blind", "blinds", "screen", "screens"],
-    "Exterior": ["exterior", "outside", "garden", "yard", "outdoors", "backyard", "driveway", "path", "tree", "bush"],
-    "Steal": ["take", "steal", "taking", "stealing"],
-    "Fall": ["fall", "falling", "slip", "slipping"],
-    "Wash": ["wash", "dry", "clean", "washing", "drying", "cleaning"],
-    "Overflow": ["overflow", "spill", "overflowing", "spilling"]
-}
+from dementia_speech.tasks.picture_description.registry import SYNONYMS
+
+WORD_PATTERN = re.compile(r"[a-z']+")
 
 def load_transcript(path: Path) -> str:
     """Load a plain text transcript file, lowercased and stripped."""
@@ -119,4 +100,45 @@ def compute_iu_metrics(iu_results: dict) -> dict:
         "mentioned_ius": mentioned,
         "iu_score": round(mentioned / total, 3) if total > 0 else 0,
         "total_mentions": total_mentions,
+    }
+
+
+def tokenize_words(transcript: str) -> list:
+    """Split a transcript into lowercase word tokens (letters/apostrophes only).
+
+    Shared by the efficiency and lexical-semantic measures so word counts
+    are computed identically wherever they're used.
+    """
+    return WORD_PATTERN.findall(transcript.lower())
+
+
+def compute_efficiency_metrics(transcript: str, iu_results: dict) -> dict:
+    """Compute IU informativeness relative to verbal output.
+
+    Coverage (`iu_score`, from `compute_iu_metrics`) counts *which* IUs were
+    mentioned but says nothing about how much talking it took to mention
+    them. Two participants can reach the same coverage while one needed
+    twice as many words — a pattern of verbose, low-yield speech associated
+    with impaired discourse (Nicholas & Brookshire, 1993, "A system for
+    quantifying the informativeness and efficiency of connected speech");
+    this is the CIU "efficiency" half of their coverage/efficiency pair
+    (their original efficiency measure is CIUs-per-minute, using recording
+    duration — unavailable here since these transcripts carry no timing, so
+    this uses CIUs-per-word instead).
+
+    Returns
+    -------
+    dict
+        total_words, iu_mentions_per_100_words (total IU mentions per 100
+        words spoken — higher means more of the participant's speech landed
+        on-target; lower means more circumlocution/repetition/off-topic
+        content per IU mentioned).
+    """
+    total_words = len(tokenize_words(transcript))
+    total_mentions = sum(v["count"] for v in iu_results.values())
+    return {
+        "total_words": total_words,
+        "iu_mentions_per_100_words": (
+            round(100 * total_mentions / total_words, 2) if total_words > 0 else None
+        ),
     }

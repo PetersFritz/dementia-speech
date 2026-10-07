@@ -15,7 +15,9 @@ Coordinate conventions
 """
 import ast
 import base64
+import os
 from collections import Counter
+from pathlib import Path
 
 import numpy as np
 import networkx as nx
@@ -23,35 +25,45 @@ import pandas as pd
 import plotly.graph_objects as go
 from PIL import Image
 
+from dementia_speech.tasks.picture_description.registry import COORDINATES_RAW as _REGISTRY_COORDINATES_RAW
+
 
 # ── Image and coordinate config ────────────────────────────────────────────
-IMAGE_PATH = "/Volumes/shared/spandh_bessemer/SPandhAndHealthcare/Fritz/Interspeech2026/data/pictures/CookieTheft.png"
-#IMAGE_PATH = "/mnt/xdrive/spandh_bessemer/SPandhAndHealthcare/Fritz/Interspeech2026/data/pictures/CookieTheft.png"
+# The shared drive mounts at a different absolute path per OS (macOS:
+# /Volumes/shared/..., Linux: /mnt/xdrive/...) even though the subpath below
+# the mount root is identical. Rather than hardcode one, try each known mount
+# root and use whichever exists on the current machine. Override with the
+# SPANDH_BESSEMER_ROOT env var if the drive is mounted somewhere else.
+_SHARED_SUBPATH = "spandh_bessemer/SPandhAndHealthcare/Fritz/Interspeech2026/data/pictures/CookieTheft.png"
+_CANDIDATE_ROOTS = [
+    os.environ.get("SPANDH_BESSEMER_ROOT"),
+    "/mnt/xdrive",
+    "/Volumes/shared",
+]
+
+
+def _resolve_image_path() -> str:
+    tried = []
+    for root in _CANDIDATE_ROOTS:
+        if not root:
+            continue
+        candidate = Path(root) / _SHARED_SUBPATH
+        if candidate.exists():
+            return str(candidate)
+        tried.append(str(candidate))
+    raise FileNotFoundError(
+        "Could not find CookieTheft.png on the shared drive. Tried:\n  "
+        + "\n  ".join(tried)
+        + "\nSet SPANDH_BESSEMER_ROOT to the drive's mount point on this machine."
+    )
+
+
+IMAGE_PATH = _resolve_image_path()
 IMAGE_HEIGHT = 592  # used for the metric-convention y-flip
 
-# Raw annotation coordinates (origin top-left, y downward)
-CIU_COORDINATES_RAW = {
-    "Boy": (295, 196),
-    "Girl": (134, 354),
-    "Woman": (501, 279),
-    "Kitchen": (630, 300),
-    "Cookie": (200, 70),
-    "Jar": (200, 100),
-    "Stool": (226, 438),
-    "Sink": (610, 344),
-    "Plate": (564, 228),
-    "Dishcloth": (539, 284),
-    "Water": (589, 461),
-    "Window": (678, 190),
-    "Cupboard": (204, 124),
-    "Dishes": (765, 386),
-    "Curtains": (679, 125),
-    "Exterior": (694, 245),
-    "Steal": (233, 105),
-    "Fall": (263, 369),
-    "Wash": (550, 255),
-    "Overflow": (604, 376),
-}
+# Raw annotation coordinates (origin top-left, y downward) — canonical
+# definitions live in registry.py, shared with the IU checklist in scoring.py.
+CIU_COORDINATES_RAW = _REGISTRY_COORDINATES_RAW
 
 # Flipped coordinates for metric computation (origin bottom-left)
 CIU_COORDINATES = {
@@ -160,14 +172,36 @@ def cross_ratio_quadrants(seq, coords, img_width, img_height):
 
 
 def calculate_metrics(ciu_sequence, ciu_coordinates, image_width, image_height) -> dict:
-    """Compute the full set of spatio-semantic graph metrics for one sequence."""
+    """Compute the full set of spatio-semantic graph metrics for one sequence.
+
+    Metric provenance (Ambadi et al., 2021, Frontiers in Neurology,
+    "Spatio-Semantic Graphs From Picture Description: Applications to
+    Detection of Cognitive Impairment", n=1,349 WRAP/DementiaBank
+    participants): six of these metrics were reported as significantly
+    different (p<0.01) between cognitively impaired and unimpaired speakers
+    — `avg_x`, `stdev_x`, `total_path_distance`, `total_path_per_unique_nodes`,
+    `cycles`, `cross_ratio_quadrants`. Impaired speakers showed a
+    left-shifted average position (`avg_x` lower — spatial neglect, despite
+    the right side of the Cookie Theft picture carrying more content),
+    longer/less efficient paths, more repeated mentions, and more
+    quadrant-jumping (attentional fragmentation). The remaining metrics here
+    (`avg_y`, `stdev_y`, `self_cycles`, `nodes`, `unique_nodes`,
+    `self_cycles_quadrants`) are descriptive/exploratory — that paper did
+    not report them as diagnostic, so treat them as context rather than
+    evidence when reading a single case.
+    """
     if len(ciu_sequence) == 0:
         return {}
+    a_x = avg_x(ciu_sequence, ciu_coordinates)
     return {
-        "avg_x": avg_x(ciu_sequence, ciu_coordinates),
+        "avg_x": a_x,
         "stdev_x": stdev_x(ciu_sequence, ciu_coordinates),
         "avg_y": avg_y(ciu_sequence, ciu_coordinates),
         "stdev_y": stdev_y(ciu_sequence, ciu_coordinates),
+        # Positive = narrative centred left of the picture's midline (the
+        # "spatial neglect" direction reported by Ambadi et al., 2021); a
+        # normalized, sign-oriented re-expression of avg_x for readability.
+        "spatial_left_bias": round((image_width / 2 - a_x) / (image_width / 2), 3),
         "total_path_distance": total_path_distance(ciu_sequence, ciu_coordinates),
         "total_path_per_unique_nodes": total_path_per_unique_nodes(ciu_sequence, ciu_coordinates),
         "self_cycles": self_cycles(ciu_sequence),

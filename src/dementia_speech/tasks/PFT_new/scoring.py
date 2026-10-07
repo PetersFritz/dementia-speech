@@ -9,7 +9,9 @@ from dementia_speech.tasks.PFT_new.rules import (
     is_repetition,
     is_similar_form_or_meaning,
     is_filler,
+    get_aoa,
 )
+from dementia_speech.tasks.PFT_new.clustering import compute_cluster_metrics
 
 # Leslie codes this pipeline can currently assign: C, OTH, N, PN, R, SIM, F.
 # Not yet implemented: SC_CORR, LP, FRAG, SC_ERR, SC_META, META, TG.
@@ -59,7 +61,7 @@ def score_trial(
         'classification' column holding one Leslie code per word.
     """
     if len(words_df) == 0:
-        for col in ['starts_with_target', 'is_real_word', 'is_person_name', 'is_country_name', _CLASSIFICATION_COLUMN]:
+        for col in ['starts_with_target', 'is_real_word', 'is_person_name', 'is_country_name', 'aoa', _CLASSIFICATION_COLUMN]:
             words_df[col] = []
         return words_df
 
@@ -76,6 +78,8 @@ def score_trial(
 
     phrase_indices = find_country_phrase_indices(words_df['word'].tolist())
     words_df.loc[list(phrase_indices), 'is_country_name'] = True
+
+    words_df['aoa'] = words_df['word'].apply(get_aoa)
 
     classifications = []
     correct_words: list[str] = []
@@ -128,6 +132,11 @@ def compute_metrics(scored_df: pd.DataFrame) -> dict:
             'total_words': 0,
             'C': 0, 'OTH': 0, 'N': 0, 'PN': 0, 'R': 0, 'SIM': 0, 'F': 0,
             'errors': 0,
+            'OTH_rate': None, 'N_rate': None, 'PN_rate': None,
+            'R_rate': None, 'SIM_rate': None, 'F_rate': None,
+            'mean_aoa_correct': None, 'aoa_n': 0,
+            'n_clusters': 0, 'n_switches': 0,
+            'mean_cluster_size': None, 'largest_cluster_size': 0,
         }
 
     counts = scored_df[_CLASSIFICATION_COLUMN].value_counts().to_dict()
@@ -135,15 +144,41 @@ def compute_metrics(scored_df: pd.DataFrame) -> dict:
     fillers = counts.get('F', 0)
     other = counts.get('OTH', 0)
 
+    correct_aoa = scored_df.loc[scored_df[_CLASSIFICATION_COLUMN] == 'C', 'aoa'].dropna()
+    correct_words_ordered = scored_df.loc[scored_df[_CLASSIFICATION_COLUMN] == 'C', 'word'].tolist()
+    cluster_metrics = compute_cluster_metrics(correct_words_ordered)
+
+    total_words = len(scored_df)
+    n, pn, r, sim = counts.get('N', 0), counts.get('PN', 0), counts.get('R', 0), counts.get('SIM', 0)
+
     return {
-        'total_words': len(scored_df),
+        'total_words': total_words,
         'C': correct,
         'OTH': other,
-        'N': counts.get('N', 0),
-        'PN': counts.get('PN', 0),
-        'R': counts.get('R', 0),
-        'SIM': counts.get('SIM', 0),
+        'N': n,
+        'PN': pn,
+        'R': r,
+        'SIM': sim,
         'F': fillers,
-        'errors': len(scored_df) - correct - fillers - other,
+        'errors': total_words - correct - fillers - other,
+        # Per-100-word rates for each code, so groups/individuals can be
+        # compared irrespective of how many words they produced overall --
+        # see docs/pft_new_scoring.md "Error analysis" for which of these
+        # actually carry signal independent of the correct-word count (only
+        # OTH_rate does; the rest are exploratory).
+        'OTH_rate': round(100 * other / total_words, 2),
+        'N_rate': round(100 * n / total_words, 2),
+        'PN_rate': round(100 * pn / total_words, 2),
+        'R_rate': round(100 * r / total_words, 2),
+        'SIM_rate': round(100 * sim / total_words, 2),
+        'F_rate': round(100 * fillers / total_words, 2),
+        # Mean age-of-acquisition (years, Kuperman et al. 2012) of correct
+        # words with a known rating; aoa_n is how many 'C' words matched the
+        # norms, since a low aoa_n makes the mean unreliable.
+        'mean_aoa_correct': float(correct_aoa.mean()) if len(correct_aoa) else None,
+        'aoa_n': int(len(correct_aoa)),
+        # Phonemic cluster/switch analysis (Troyer et al. 1997) over the
+        # ordered sequence of correct words -- see PFT_new/clustering.py.
+        **cluster_metrics,
     }
 

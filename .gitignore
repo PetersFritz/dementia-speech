@@ -8,3 +8,6 @@ __pycache__/
 .DS_Store
 study/consent_form/*.md
 docs/updates/
+
+# local, untracked helper scripts
+scripts/local/

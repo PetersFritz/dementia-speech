@@ -13,6 +13,7 @@ from dementia_speech.tasks.picture_description.scoring import (
     load_transcript,
     extract_information_units,
     compute_iu_metrics,
+    compute_efficiency_metrics,
     get_iu_sequence_unique,
     get_iu_sequence_full,
 )
@@ -21,6 +22,7 @@ from dementia_speech.tasks.picture_description.graph import (
     calculate_metrics,
     IMAGE_PATH,
 )
+from dementia_speech.tasks.picture_description.lexical import compute_lexical_metrics
  
 TRANSCRIPT_DIR = Path("data/raw/text/CTD")  # adjust to your path
 METADATA_PATH  = Path("data/raw/meta-info.csv")
@@ -58,8 +60,10 @@ def main():
             transcript = load_transcript(txt_path)
             iu_results = extract_information_units(transcript)
  
-            # Coverage metrics
+            # Coverage, efficiency, and lexical-semantic metrics
             metrics = compute_iu_metrics(iu_results)
+            metrics.update(compute_efficiency_metrics(transcript, iu_results))
+            metrics.update(compute_lexical_metrics(transcript))
  
             # Two sequences
             seq_unique = get_iu_sequence_unique(iu_results)   # for display / coverage order
@@ -93,6 +97,21 @@ def main():
             }
             row.update(metrics)
             row.update(graph_metrics)
+
+            # Length-normalized graph metrics: raw cycles/path_distance/
+            # self_cycles/unique_nodes correlate 0.6-0.87 with total_words in
+            # this cohort, so a participant who simply talks less looks
+            # "better" on every one of them regardless of actual cognitive
+            # content. Dividing by total_words removes that confound — see
+            # docs/cookie_theft_scoring.md "Replication note".
+            total_words = metrics.get("total_words") or 0
+            if total_words > 0 and graph_metrics:
+                row["cycles_per_100_words"] = round(100 * graph_metrics["cycles"] / total_words, 2)
+                row["path_distance_per_100_words"] = round(100 * graph_metrics["total_path_distance"] / total_words, 1)
+            else:
+                row["cycles_per_100_words"] = None
+                row["path_distance_per_100_words"] = None
+
             row["iu_sequence_unique"] = json.dumps(seq_unique)
             row["iu_sequence_full"]   = json.dumps(seq_full)
             row["iu_sequence_readable"] = " > ".join(seq_unique)

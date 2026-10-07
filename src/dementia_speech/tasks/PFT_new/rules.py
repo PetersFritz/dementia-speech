@@ -15,6 +15,12 @@ import pycountry
 
 STEMMER = PorterStemmer()
 
+# Reference-data paths are anchored to this file's location, not the process's
+# working directory -- pipelines/*.py os.chdir() to the project root before
+# importing this module, but the Shiny app doesn't, so a CWD-relative path
+# would break there.
+_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+
 """
 Filled pauses -> Leslie code 'F'. Discourse markers (well, so, right, yeah,
 no, ...) are deliberately NOT included here -- they're scored through the
@@ -36,7 +42,7 @@ def is_filler(word: str) -> bool:
 Load excel file with human names for proper noun detection
 """
 
-_ONS_PATH = Path("data/raw/reference/babynames1996to2025.xlsx")
+_ONS_PATH = _PROJECT_ROOT / "data/raw/reference/babynames1996to2025.xlsx"
 
 def _load_ons_names(path: Path = _ONS_PATH) -> set[str]:
     df_boy = pd.read_excel(path, sheet_name="Table_2")
@@ -63,6 +69,147 @@ FORCE_NAME_EXCEPTIONS = {
     "peter",
     "phoebe"
 }
+
+"""
+Load age-of-acquisition (AoA) norms (Kuperman et al., 2012, Behavior Research
+Methods) for the age-of-acquisition metric. Mean AoA rating is in years.
+"""
+
+_AOA_PATH = _PROJECT_ROOT / "data/raw/reference/Kuperman2012.csv"
+
+_AOA_WORD_COLS = {"word", "word_english"}
+_AOA_RATING_COLS = {"rating.mean", "aoa_mean"}
+
+
+def _load_aoa_norms(path: Path = _AOA_PATH) -> dict[str, float]:
+    if not path.exists():
+        return {}
+
+    df = pd.read_excel(path) if path.suffix.lower() in {".xlsx", ".xls"} else pd.read_csv(path)
+
+    word_col = next((c for c in df.columns if str(c).strip().lower() in _AOA_WORD_COLS), None)
+    aoa_col = next((c for c in df.columns if str(c).strip().lower() in _AOA_RATING_COLS), None)
+    if word_col is None or aoa_col is None:
+        raise ValueError(
+            f"Expected a word column ({_AOA_WORD_COLS}) and an AoA rating column "
+            f"({_AOA_RATING_COLS}) in {path}, found: {list(df.columns)}"
+        )
+
+    norms = df[[word_col, aoa_col]].dropna()
+    norms[word_col] = norms[word_col].astype(str).str.strip().str.lower()
+    return dict(zip(norms[word_col], norms[aoa_col].astype(float)))
+
+
+AOA_NORMS = _load_aoa_norms()
+
+
+def get_aoa(word: str) -> float | None:
+    """Look up the mean age-of-acquisition rating (years) for a word.
+
+    Returns None if the AoA norms file isn't present or the word isn't in it.
+    """
+    return AOA_NORMS.get(word.lower().strip())
+
+
+"""
+Load a UK-English IPA pronouncing dictionary (Montreal Forced Aligner's
+english_uk_mfa lexicon) for phonemic cluster/switch analysis (Troyer et al.,
+1997). Some words have several weighted pronunciation variants (e.g. "paint"
+-> /p ej n t/ 0.99, /p ej n/ 0.86); we keep only the highest-probability
+variant per word.
+"""
+
+_PHONE_DICT_PATH = _PROJECT_ROOT / "data/raw/reference/english_uk_mfa.dict"
+
+# Vowel phones in this dictionary's IPA inventory (monophthongs + diphthongs).
+# Everything else (including glides j/w, which only appear standalone as
+# consonants -- diphthongs like "aj"/"aw"/"ej" are single tokens) is a
+# consonant. Used to find the rime (nucleus + coda) of a word for rhyme
+# matching.
+VOWEL_PHONES = {
+    "a", "aj", "aw", "e", "ej", "i", "iː", "ɐ", "ɑ", "ɑː", "ɒ", "ɒː", "ɔj",
+    "ə", "əw", "ɛ", "ɛː", "ɜ", "ɜː", "ɪ", "ʉ", "ʉː", "ʊ",
+}
+
+
+def _load_phone_dict(path: Path = _PHONE_DICT_PATH) -> dict[str, list[str]]:
+    if not path.exists():
+        return {}
+
+    best_prob: dict[str, float] = {}
+    phones: dict[str, list[str]] = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) < 2:
+                continue
+            word = fields[0].strip().lower()
+            prob = float(fields[1]) if len(fields) > 2 else 1.0
+            if word not in best_prob or prob > best_prob[word]:
+                best_prob[word] = prob
+                phones[word] = fields[-1].split()
+    return phones
+
+
+PHONE_DICT = _load_phone_dict()
+
+
+def get_phones(word: str) -> list[str] | None:
+    """Look up the (highest-probability) IPA phone sequence for a word.
+
+    Returns None if the pronouncing dictionary isn't present or the word
+    isn't in it.
+    """
+    return PHONE_DICT.get(word.lower().strip())
+
+
+def _rime(phones: list[str]) -> list[str]:
+    """The rime of a word: from its last vowel phone to the end."""
+    for i in range(len(phones) - 1, -1, -1):
+        if phones[i] in VOWEL_PHONES:
+            return phones[i:]
+    return phones
+
+
+# A rime of just a bare, coda-less schwa isn't a meaningful rhyme anchor --
+# this phone set doesn't mark stress, so we can't tell a genuinely rhyming
+# stressed vowel from an incidental unstressed one, and a coda-less schwa is
+# specifically the *reduced/unstressed* vowel. It's also extremely common:
+# english_uk_mfa is non-rhotic, so any "-er"/"-or"/"-ar" ending (doctor,
+# water, sugar, camera, banana, paper, ...) collapses to a trailing bare
+# schwa. Without this guard, huge numbers of unrelated words would spuriously
+# "rhyme" on nothing but that shared reduced ending.
+_WEAK_RIME = ["ə"]
+
+
+def is_phonemic_cluster_match(word_a: str, word_b: str) -> bool:
+    """Check if two words are phonemically related (Troyer et al. cluster criteria).
+
+    True if the words share their first two phonemes, rhyme (share a rime --
+    last vowel phone through the end of the word, excluding a bare schwa
+    rime -- see `_WEAK_RIME`), or are homonyms (identical full phone
+    sequence). Conservative subset of the original four Troyer criteria:
+    doesn't attempt the "differ by one phoneme" rule.
+
+    Returns False (not merged into a cluster) if either word is missing from
+    the pronouncing dictionary, rather than guessing.
+    """
+    phones_a = get_phones(word_a)
+    phones_b = get_phones(word_b)
+    if not phones_a or not phones_b:
+        return False
+
+    if phones_a == phones_b:
+        return True
+
+    if phones_a[:2] == phones_b[:2]:
+        return True
+
+    rime_a = _rime(phones_a)
+    if rime_a == _WEAK_RIME:
+        return False
+    return rime_a == _rime(phones_b)
+
 
 """
 Load a list with all country names for proper noun detection
