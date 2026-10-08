@@ -7,9 +7,8 @@
 # Run from the repo root: sbatch pipelines/slurm/extract_memory_transcripts.sbatch
 
 #SBATCH --job-name=extract-mem-transcripts
-#SBATCH --partition=cpu
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --mem=32G
 #SBATCH --time=00:20:00
 #SBATCH --output=/mnt/parscratch/users/acp23fp/dementia-speech/logs/extract-mem-transcripts-%j.out
 
