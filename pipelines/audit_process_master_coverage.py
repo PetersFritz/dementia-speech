@@ -113,13 +113,18 @@ def main():
     print("\nCoverage per task:")
     print(df.groupby("task")["status"].value_counts().unstack(fill_value=0))
 
-    gaps = df[df["status"] != "ok"]
+    # "no_code_for_system" isn't a gap -- matching_prompts.csv leaving a system's cell
+    # blank for a task means that system genuinely never asks that question variant
+    # (e.g. cchat has no "ltlj" code because it asks long-term job history as one
+    # combined "lstj" question instead of the old systems' two separate ones). Only
+    # missing/folder_missing/multiple_matches reflect an actual file-level problem.
+    gaps = df[~df["status"].isin(["ok", "no_code_for_system"])]
     if len(gaps):
-        print(f"\n{len(gaps)} gaps found:")
+        print(f"\n{len(gaps)} real gaps found:")
         for _, r in gaps.iterrows():
             print(f"  {r['process_id']} ({r['system']}) / {r['task']}: {r['status']}")
     else:
-        print("\nNo gaps found -- full coverage.")
+        print("\nNo real gaps found -- full coverage (aside from questions a system never asks).")
 
 
 if __name__ == "__main__":
