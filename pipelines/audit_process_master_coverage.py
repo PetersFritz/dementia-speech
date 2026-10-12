@@ -8,6 +8,9 @@ per-question split apparently missed that question, even though the full combine
 transcript has it) across every task, not just one.
 
 Pure read-only file-existence checks -- cheap enough to run on a login node, no sbatch needed.
+Checks each participant's file *count* first (one directory listing) against how many task
+files their system should produce; only runs the slower per-task glob for participants whose
+count doesn't match, rather than globbing all 10 tasks for every one of the 400 participants.
 Run from the repo root: python pipelines/audit_process_master_coverage.py
 """
 import csv
@@ -47,9 +50,9 @@ def load_participant_systems() -> dict[str, str]:
     }
 
 
-def check_file(folder: Path, folder_exists: bool, code: str | None) -> str:
-    if not folder_exists:
-        return "folder_missing"
+def check_file(folder: Path, code: str | None) -> str:
+    """Detailed per-task check -- only called once the cheap count check below has
+    already shown a participant's folder doesn't have the expected number of files."""
     if not code:
         return "no_code_for_system"
     matches = list(folder.glob(f"*_{code}.txt"))
@@ -58,6 +61,11 @@ def check_file(folder: Path, folder_exists: bool, code: str | None) -> str:
     if len(matches) == 0:
         return "missing"
     return "multiple_matches"
+
+
+def expected_count(system: str, task_codes: dict[str, dict[str, str]]) -> int:
+    """How many task files a participant on this system should have."""
+    return sum(1 for codes in task_codes.values() if codes.get(system))
 
 
 def main():
@@ -69,17 +77,34 @@ def main():
     rows = []
     for process_id, system in sorted(participant_systems.items()):
         folder = PROCESS_MASTER_DIR / process_id
-        folder_exists = folder.is_dir()
-        for task in tasks:
-            code = task_codes[task].get(system)
-            status = check_file(folder, folder_exists, code)
-            rows.append({
-                "process_id": process_id,
-                "system": system,
-                "task": task,
-                "code": code or "",
-                "status": status,
-            })
+
+        if not folder.is_dir():
+            rows.extend({
+                "process_id": process_id, "system": system, "task": task,
+                "code": task_codes[task].get(system, ""), "status": "folder_missing",
+            } for task in tasks)
+            continue
+
+        # Cheap first pass: one directory listing, compared against how many task
+        # files this participant's system should produce. Only participants whose
+        # count doesn't match pay for the slower per-task glob below.
+        actual = len(list(folder.glob("*.txt")))
+        expected = expected_count(system, task_codes)
+
+        if actual == expected:
+            rows.extend({
+                "process_id": process_id, "system": system, "task": task,
+                "code": task_codes[task].get(system, ""),
+                "status": "ok" if task_codes[task].get(system) else "no_code_for_system",
+            } for task in tasks)
+            continue
+
+        # Count mismatch -- figure out exactly which task(s) are missing or duplicated.
+        rows.extend({
+            "process_id": process_id, "system": system, "task": task,
+            "code": task_codes[task].get(system, ""),
+            "status": check_file(folder, task_codes[task].get(system)),
+        } for task in tasks)
 
     df = pd.DataFrame(rows)
     df.to_csv(OUTPUT_PATH, index=False)
