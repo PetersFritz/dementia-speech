@@ -37,6 +37,28 @@ def _lookup_demographics(participant_id):
 
 DEMOGRAPHICS = {pid: _lookup_demographics(pid) for pid in PARTICIPANTS}
 
+# ── Memory complaints (Q2 "memory-problems" LLM extraction) ──────────────────
+# One row per finding; a participant with no findings (no_complaint/needs_review)
+# still has exactly one row with domain/summary/evidence_quote all null.
+_mem_complaints_df = pd.read_csv(DATA_DIR / "memory_complaints.csv")
+_mem_complaints_df["participant_id"] = _mem_complaints_df["participant_id"].astype(str)
+
+MEMORY_COMPLAINTS_BY_PARTICIPANT = {
+    pid: group.to_dict("records")
+    for pid, group in _mem_complaints_df.groupby("participant_id")
+}
+
+STATUS_COLOURS = {
+    "complaint":     "#D85A30",
+    "no_complaint":  "#1D9E75",
+    "needs_review":  "#BA7517",
+}
+STATUS_LABELS = {
+    "complaint":     "Complaint reported",
+    "no_complaint":  "No complaint",
+    "needs_review":  "Needs review",
+}
+
 # ── Colours (Leslie code system: C, OTH, N, PN, R, SIM, F) ────────────────────
 CLASSIFICATION_COLOURS = {
     "C":   "#2ecc71",

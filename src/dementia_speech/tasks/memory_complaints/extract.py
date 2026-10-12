@@ -5,32 +5,19 @@ from code that's actually running on a GPU node (e.g. pipelines/score_memory_com
 not from the dashboard/scoring side of the project.
 """
 import json
-from functools import lru_cache
 
 from pydantic import ValidationError
 
 from dementia_speech.tasks.memory_complaints.prompt import build_messages
 from dementia_speech.tasks.memory_complaints.schema import ComplaintResult
+from dementia_speech.tasks._shared.model import load_model
 
-MODEL_PATH = "/mnt/parscratch/users/acp23fp/dementia-speech/models/Qwen2.5-14B-Instruct"
 MAX_RETRIES = 3
 MAX_NEW_TOKENS = 512
 
 
-@lru_cache(maxsize=1)
-def _load_model():
-    import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_PATH, dtype=torch.bfloat16, device_map="auto"
-    )
-    return tokenizer, model
-
-
 def _generate(transcript: str, retry_feedback: str | None) -> str:
-    tokenizer, model = _load_model()
+    tokenizer, model = load_model()
     messages = build_messages(transcript, retry_feedback=retry_feedback)
     encoded = tokenizer.apply_chat_template(
         messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
