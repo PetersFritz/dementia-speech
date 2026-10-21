@@ -15,7 +15,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 os.chdir(project_root)
 
-PROCESS_MASTER_DIR = Path("/mnt/parscratch/users/acp23fp/PROCESS_Master/files")
+PROCESS_MASTER_DIR = Path("/mnt/parscratch/users/acp23fp/DementiaSpeech_HPC/PROCESS_Master/files")
 OUTPUT_DIR = Path("data/raw/text/MEM")
 
 
