@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/mnt/parscratch/users/acp23fp/dementia-speech/pipelines/score_memory_complaints.py", line 10, in <module>
+    import pandas as pd
+ModuleNotFoundError: No module named 'pandas'
