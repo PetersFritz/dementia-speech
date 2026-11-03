@@ -12,12 +12,13 @@ import pandas as pd
 project_root = Path(__file__).parent.parent
 os.chdir(project_root)
 
+from dementia_speech.paths import DATA_DIR
 from dementia_speech.tasks.finance.extract import extract
 from dementia_speech.tasks.finance.verify import drop_if_ungrounded
 
-TRANSCRIPT_DIR = Path("data/raw/text/FIN")  # adjust to your path -- Q9 "finance" transcripts
-METADATA_PATH = Path("data/raw/meta-info.csv")
-OUTPUT_PATH = Path("data/processed/finance.csv")
+TRANSCRIPT_DIR = DATA_DIR / "raw/text/FIN"  # Q9 "finance" transcripts
+METADATA_PATH = DATA_DIR / "raw/meta-info.csv"
+OUTPUT_PATH = DATA_DIR / "processed/finance.csv"
 
 
 def extract_participant_id(filename) -> str:

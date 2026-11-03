@@ -7,13 +7,14 @@ project_root = Path(__file__).parent.parent
 os.chdir(project_root)
 
 from dementia_speech.io.textgrid import load_word_tier
+from dementia_speech.paths import DATA_DIR
 from dementia_speech.tasks.PFT_new.scoring import score_trial, compute_metrics
 from dementia_speech.tasks.PFT_new.features import compute_temporal_bins
 
-TEXTGRID_DIR = Path("data/raw/textgrids/PFT")
-METADATA_PATH = Path("data/raw/meta-info.csv")
-OUTPUT_WORDS = Path("data/processed/pft_words_new.csv")
-OUTPUT_METRICS = Path("data/processed/pft_metrics_new.csv")
+TEXTGRID_DIR = DATA_DIR / "raw/textgrids/PFT"
+METADATA_PATH = DATA_DIR / "raw/meta-info.csv"
+OUTPUT_WORDS = DATA_DIR / "processed/pft_words_new.csv"
+OUTPUT_METRICS = DATA_DIR / "processed/pft_metrics_new.csv"
 TARGET_LETTER = "p"
 
 

@@ -7,11 +7,9 @@ directly; see SFT_new/scoring.py.
 """
 from pathlib import Path
 
-# Resolve relative to the package root, not the current working directory,
-# same reasoning as PFT_new/rules.py -- pipelines/*.py os.chdir() to the
-# project root before importing this module, but the Shiny app doesn't.
-_PROJECT_ROOT = Path(__file__).resolve().parents[4]
-_ANIMAL_SCHEME_PATH = _PROJECT_ROOT / "data/raw/reference/animals_snafu_scheme.csv"
+from dementia_speech.paths import DATA_DIR
+
+_ANIMAL_SCHEME_PATH = DATA_DIR / "raw/reference/animals_snafu_scheme.csv"
 
 
 def normalize_word(word: str) -> str:

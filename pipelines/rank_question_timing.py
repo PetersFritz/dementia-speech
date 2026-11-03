@@ -16,8 +16,10 @@ Run from the repo root: python pipelines/rank_question_timing.py
 import csv
 from pathlib import Path
 
-TIMING_CSV_PATH = Path("data/raw/old_cognospeak_question_timing.csv")
-OUTPUT_PATH = Path("data/raw/old_cognospeak_question_timing_ranked.csv")
+from dementia_speech.paths import DATA_DIR
+
+TIMING_CSV_PATH = DATA_DIR / "raw/old_cognospeak_question_timing.csv"
+OUTPUT_PATH = DATA_DIR / "raw/old_cognospeak_question_timing_ranked.csv"
 
 
 def main():

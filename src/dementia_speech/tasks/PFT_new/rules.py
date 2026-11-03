@@ -13,13 +13,9 @@ from nltk.corpus import words as _nltk_words
 from nltk.stem import PorterStemmer
 import pycountry
 
-STEMMER = PorterStemmer()
+from dementia_speech.paths import DATA_DIR
 
-# Reference-data paths are anchored to this file's location, not the process's
-# working directory -- pipelines/*.py os.chdir() to the project root before
-# importing this module, but the Shiny app doesn't, so a CWD-relative path
-# would break there.
-_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+STEMMER = PorterStemmer()
 
 """
 Filled pauses -> Leslie code 'F'. Discourse markers (well, so, right, yeah,
@@ -42,7 +38,7 @@ def is_filler(word: str) -> bool:
 Load excel file with human names for proper noun detection
 """
 
-_ONS_PATH = _PROJECT_ROOT / "data/raw/reference/babynames1996to2025.xlsx"
+_ONS_PATH = DATA_DIR / "raw/reference/babynames1996to2025.xlsx"
 
 def _load_ons_names(path: Path = _ONS_PATH) -> set[str]:
     df_boy = pd.read_excel(path, sheet_name="Table_2")
@@ -75,7 +71,7 @@ Load age-of-acquisition (AoA) norms (Kuperman et al., 2012, Behavior Research
 Methods) for the age-of-acquisition metric. Mean AoA rating is in years.
 """
 
-_AOA_PATH = _PROJECT_ROOT / "data/raw/reference/Kuperman2012.csv"
+_AOA_PATH = DATA_DIR / "raw/reference/Kuperman2012.csv"
 
 _AOA_WORD_COLS = {"word", "word_english"}
 _AOA_RATING_COLS = {"rating.mean", "aoa_mean"}
@@ -119,7 +115,7 @@ english_uk_mfa lexicon) for phonemic cluster/switch analysis (Troyer et al.,
 variant per word.
 """
 
-_PHONE_DICT_PATH = _PROJECT_ROOT / "data/raw/reference/english_uk_mfa.dict"
+_PHONE_DICT_PATH = DATA_DIR / "raw/reference/english_uk_mfa.dict"
 
 # Vowel phones in this dictionary's IPA inventory (monophthongs + diphthongs).
 # Everything else (including glides j/w, which only appear standalone as

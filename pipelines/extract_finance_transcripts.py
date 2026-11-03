@@ -13,8 +13,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 os.chdir(project_root)
 
+from dementia_speech.paths import DATA_DIR
+
 PROCESS_MASTER_DIR = Path("/mnt/parscratch/users/acp23fp/DementiaSpeech_HPC/PROCESS_Master/files")
-OUTPUT_DIR = Path("data/raw/text/FIN")
+OUTPUT_DIR = DATA_DIR / "raw/text/FIN"
 
 
 def main():

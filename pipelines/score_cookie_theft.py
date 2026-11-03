@@ -23,11 +23,12 @@ from dementia_speech.tasks.picture_description.graph import (
     IMAGE_PATH,
 )
 from dementia_speech.tasks.picture_description.lexical import compute_lexical_metrics
- 
-TRANSCRIPT_DIR = Path("data/raw/text/CTD")  # adjust to your path
-METADATA_PATH  = Path("data/raw/meta-info.csv")
-OUTPUT_IU      = Path("data/processed/cookie_theft_iu.csv")
-OUTPUT_METRICS = Path("data/processed/cookie_theft_metrics.csv")
+from dementia_speech.paths import DATA_DIR
+
+TRANSCRIPT_DIR = DATA_DIR / "raw/text/CTD"
+METADATA_PATH  = DATA_DIR / "raw/meta-info.csv"
+OUTPUT_IU      = DATA_DIR / "processed/cookie_theft_iu.csv"
+OUTPUT_METRICS = DATA_DIR / "processed/cookie_theft_metrics.csv"
  
  
 def extract_participant_id(filename) -> str:

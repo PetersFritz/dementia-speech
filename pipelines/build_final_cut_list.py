@@ -31,8 +31,10 @@ import csv
 import re
 from pathlib import Path
 
-INPUT_CSV_PATH = Path("data/raw/old_cognospeak_manual_review_final.csv")
-OUTPUT_PATH = Path("data/raw/old_cognospeak_final_cut_list.csv")
+from dementia_speech.paths import DATA_DIR
+
+INPUT_CSV_PATH = DATA_DIR / "raw/old_cognospeak_manual_review_final.csv"
+OUTPUT_PATH = DATA_DIR / "raw/old_cognospeak_final_cut_list.csv"
 
 RANK_PREFIX_RE = re.compile(r"^\d+_(.+)$")
 

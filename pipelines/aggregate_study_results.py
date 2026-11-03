@@ -8,11 +8,13 @@ import pandas as pd
 project_root = Path(__file__).parent.parent
 os.chdir(project_root)
 
-SESSIONS_DIR = Path("data/study/sessions")
-METADATA_PATH = Path("data/raw/meta-info.csv")
-OUTPUT_DECISIONS = Path("data/processed/study_decisions.csv")
-OUTPUT_SUMMARY = Path("data/processed/study_summary.csv")
-OUTPUT_QUESTIONNAIRE = Path("data/processed/study_questionnaire.csv")
+from dementia_speech.paths import DATA_DIR
+
+SESSIONS_DIR = DATA_DIR / "study/sessions"
+METADATA_PATH = DATA_DIR / "raw/meta-info.csv"
+OUTPUT_DECISIONS = DATA_DIR / "processed/study_decisions.csv"
+OUTPUT_SUMMARY = DATA_DIR / "processed/study_summary.csv"
+OUTPUT_QUESTIONNAIRE = DATA_DIR / "processed/study_questionnaire.csv"
 
 
 def load_true_diagnoses() -> dict[int, str]:

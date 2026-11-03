@@ -11,12 +11,13 @@ import pandas as pd
 project_root = Path(__file__).parent.parent
 os.chdir(project_root)
 
+from dementia_speech.paths import DATA_DIR
 from dementia_speech.tasks.SFT_new.scoring import compute_metrics, score_trial
 
-TRANSCRIPT_DIR = Path("data/raw/process/SFT")
-METADATA_PATH = Path("data/raw/meta-info.csv")
-OUTPUT_WORDS = Path("data/processed/sft_words.csv")
-OUTPUT_METRICS = Path("data/processed/sft_metrics.csv")
+TRANSCRIPT_DIR = DATA_DIR / "raw/process/SFT"
+METADATA_PATH = DATA_DIR / "raw/meta-info.csv"
+OUTPUT_WORDS = DATA_DIR / "processed/sft_words.csv"
+OUTPUT_METRICS = DATA_DIR / "processed/sft_metrics.csv"
 
 
 def extract_participant_id(path: Path) -> str:

@@ -1,10 +1,11 @@
 """Shared data loading and constants for the dashboard."""
 import json
-from pathlib import Path
 
 import pandas as pd
 
-DATA_DIR = Path(__file__).parent.parent / "data" / "processed"
+from dementia_speech.paths import DATA_DIR as _DATA_ROOT
+
+DATA_DIR = _DATA_ROOT / "processed"
 
 # ── Phonemic fluency data (Leslie code scoring, PFT_new) ─────────────────────
 pft_words_df   = pd.read_csv(DATA_DIR / "pft_words_new.csv")

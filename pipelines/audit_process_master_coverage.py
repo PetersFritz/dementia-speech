@@ -22,10 +22,12 @@ import pandas as pd
 project_root = Path(__file__).parent.parent
 os.chdir(project_root)
 
+from dementia_speech.paths import DATA_DIR
+
 PROCESS_MASTER_DIR = Path("/mnt/parscratch/users/acp23fp/PROCESS_Master/files")
-DEMOGRAPHICS_PATH = Path("data/raw/Process_demographics.csv")
-MATCHING_PROMPTS_PATH = Path("data/raw/matching_prompts.csv")
-OUTPUT_PATH = Path("data/processed/process_master_coverage.csv")
+DEMOGRAPHICS_PATH = DATA_DIR / "raw/Process_demographics.csv"
+MATCHING_PROMPTS_PATH = DATA_DIR / "raw/matching_prompts.csv"
+OUTPUT_PATH = DATA_DIR / "processed/process_master_coverage.csv"
 
 
 def load_task_system_codes() -> dict[str, dict[str, str]]:

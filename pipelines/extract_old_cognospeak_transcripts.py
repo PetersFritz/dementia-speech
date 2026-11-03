@@ -52,10 +52,12 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 os.chdir(project_root)
 
-DEMOGRAPHICS_PATH = Path("data/raw/Process_demographics.csv")
-PROMPTS_MAPPING_PATH = Path("data/raw/PromptsMapping.csv")
-TEXT_DIR = Path("data/raw/text")
-TIMING_OUTPUT_PATH = Path("data/raw/old_cognospeak_question_timing.csv")
+from dementia_speech.paths import DATA_DIR
+
+DEMOGRAPHICS_PATH = DATA_DIR / "raw/Process_demographics.csv"
+PROMPTS_MAPPING_PATH = DATA_DIR / "raw/PromptsMapping.csv"
+TEXT_DIR = DATA_DIR / "raw/text"
+TIMING_OUTPUT_PATH = DATA_DIR / "raw/old_cognospeak_question_timing.csv"
 
 LABEL_DIRS = [
     Path("/mnt/xdrive/cchat/Shared/CognoSpeak_OLD/CognoSpeak/Audacity-labels"),

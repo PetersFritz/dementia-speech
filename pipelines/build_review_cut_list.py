@@ -36,11 +36,13 @@ import csv
 import sys
 from pathlib import Path
 
+from dementia_speech.paths import DATA_DIR
+
 sys.path.insert(0, str(Path(__file__).parent))
 from extract_old_cognospeak_transcripts import load_old_system_participants  # noqa: E402
 
-REVIEW_CSV_PATH = Path("data/raw/old_cognospeak_manual_review.csv")
-OUTPUT_PATH = Path("data/raw/old_cognospeak_review_cut_list.csv")
+REVIEW_CSV_PATH = DATA_DIR / "raw/old_cognospeak_manual_review.csv"
+OUTPUT_PATH = DATA_DIR / "raw/old_cognospeak_review_cut_list.csv"
 
 
 def main():

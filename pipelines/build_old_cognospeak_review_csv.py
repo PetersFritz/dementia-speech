@@ -27,6 +27,8 @@ import csv
 import sys
 from pathlib import Path
 
+from dementia_speech.paths import DATA_DIR
+
 sys.path.insert(0, str(Path(__file__).parent))
 from extract_old_cognospeak_transcripts import (  # noqa: E402
     MATCH_THRESHOLD,
@@ -39,7 +41,7 @@ from extract_old_cognospeak_transcripts import (  # noqa: E402
     parse_label_file,
 )
 
-OUTPUT_PATH = Path("data/raw/old_cognospeak_manual_review.csv")
+OUTPUT_PATH = DATA_DIR / "raw/old_cognospeak_manual_review.csv"
 
 
 def guess_answer_span(turns: list[tuple[float, float, str, str]], turn_idx: int) -> tuple[float | None, float | None]:
