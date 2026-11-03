@@ -21,7 +21,7 @@ import re
 import pandas as pd
 
 from dementia_speech.tasks.PFT_new.rules import is_filler, is_repetition
-from dementia_speech.tasks.SFT_new.rules import canonical_key, is_animal, normalize_word
+from dementia_speech.tasks.SFT_new.rules import canonical_key, get_aoa, is_animal, normalize_word
 
 _CLASSIFICATION_COLUMN = "classification"
 
@@ -162,14 +162,20 @@ def score_trial(raw_text: str) -> tuple[pd.DataFrame, int]:
                 if not norm or norm in _CONNECTIVE_STOPWORDS:
                     continue
                 if is_filler(word):
-                    rows.append({"word": word, _CLASSIFICATION_COLUMN: "F"})
+                    rows.append({"word": word, _CLASSIFICATION_COLUMN: "F", "aoa": get_aoa(word)})
                     continue
                 remaining.append(word)
 
             for word_or_phrase, classification in _classify_segment_words(remaining, previous_correct):
-                rows.append({"word": word_or_phrase, _CLASSIFICATION_COLUMN: classification})
+                rows.append({
+                    "word": word_or_phrase,
+                    _CLASSIFICATION_COLUMN: classification,
+                    # None for any multi-word phrase (e.g. "guinea pig") --
+                    # the Kuperman norms are single-word only.
+                    "aoa": get_aoa(word_or_phrase),
+                })
 
-    scored_df = pd.DataFrame(rows, columns=["word", _CLASSIFICATION_COLUMN])
+    scored_df = pd.DataFrame(rows, columns=["word", _CLASSIFICATION_COLUMN, "aoa"])
     return scored_df, oth_turn_count
 
 
@@ -179,6 +185,7 @@ def compute_metrics(scored_df: pd.DataFrame, oth_turn_count: int) -> dict:
         return {
             "total_items": 0, "C": 0, "R": 0, "OTH": 0, "F": 0,
             "R_rate": None, "OTH_rate": None, "F_rate": None,
+            "mean_aoa_correct": None, "aoa_n": 0,
             "oth_turn_count": oth_turn_count,
         }
 
@@ -186,11 +193,19 @@ def compute_metrics(scored_df: pd.DataFrame, oth_turn_count: int) -> dict:
     total = len(scored_df)
     c, r, oth, f = (counts.get(code, 0) for code in ("C", "R", "OTH", "F"))
 
+    # Mean age-of-acquisition (years, Kuperman et al. 2012) of correct
+    # animal names with a known rating; aoa_n is how many 'C' items matched
+    # the norms (multi-word names like "guinea pig" never do), since a low
+    # aoa_n makes the mean unreliable.
+    correct_aoa = scored_df.loc[scored_df[_CLASSIFICATION_COLUMN] == "C", "aoa"].dropna()
+
     return {
         "total_items": total,
         "C": c, "R": r, "OTH": oth, "F": f,
         "R_rate": round(100 * r / total, 2),
         "OTH_rate": round(100 * oth / total, 2),
         "F_rate": round(100 * f / total, 2),
+        "mean_aoa_correct": float(correct_aoa.mean()) if len(correct_aoa) else None,
+        "aoa_n": int(len(correct_aoa)),
         "oth_turn_count": oth_turn_count,
     }

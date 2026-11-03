@@ -83,12 +83,12 @@ ERROR_EXPLORATORY_MEASURES = {
     "F_rate": "Filled pause rate",
 }
 
-# Clustering/switching/AoA: real, monotonic effects on their own, but fully
-# explained by `C` (see module docstring) — kept for the qualitative
-# transcript view and research use, not as independent clinical flags.
+# AoA: a real, monotonic effect on its own, but fully explained by `C` (see
+# module docstring) -- kept for research use, not as an independent
+# clinical flag. Clustering/switching are computed and saved in
+# pft_metrics_new.csv as before, but removed from this list -- and so from
+# the dashboard's exploratory panel -- for now; see the Tier 1 dashboard
+# TODO for revisiting a semantic-clustering-consistent presentation later.
 EXPLORATORY_MEASURES = {
-    "n_clusters": "Clusters produced",
-    "n_switches": "Switches between clusters",
-    "largest_cluster_size": "Largest cluster",
     "mean_aoa_correct": "Mean age-of-acquisition of correct words (yrs)",
 }

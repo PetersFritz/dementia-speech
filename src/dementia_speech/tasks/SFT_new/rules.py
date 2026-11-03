@@ -8,6 +8,7 @@ directly; see SFT_new/scoring.py.
 from pathlib import Path
 
 from dementia_speech.paths import DATA_DIR
+from dementia_speech.lexical_norms import get_aoa  # noqa: F401 -- re-exported for SFT_new.scoring
 
 _ANIMAL_SCHEME_PATH = DATA_DIR / "raw/reference/animals_snafu_scheme.csv"
 

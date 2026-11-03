@@ -14,5 +14,6 @@ source activate dementia-speech-llm
 
 export PYTHONNOUSERSITE=1
 export HF_HOME=/mnt/parscratch/users/acp23fp/hf_cache
+export DEMENTIA_SPEECH_DATA_DIR=/mnt/parscratch/users/acp23fp/dementia-speech/data
 
 python pipelines/score_memory_complaints.py

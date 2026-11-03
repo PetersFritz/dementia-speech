@@ -50,7 +50,7 @@ def _group_distribution_figure(metric_keys, labels, participant_row):
 
         pval = participant_row.get(metric)
         if pval is not None:
-            fig.add_vline(x=pval, line=dict(color="#2c3e50", width=2, dash="dash"),
+            fig.add_vline(x=pval, line=dict(color="#1565C0", width=2, dash="dash"),
                           row=row, col=1)
 
     fig.update_layout(height=110 * len(metric_keys),

@@ -1,6 +1,4 @@
 """Phonemic fluency tab module (refactored from original app.py)."""
-from collections import Counter
-
 import numpy as np
 from shiny import module, ui, render, reactive
 import plotly.graph_objects as go
@@ -8,23 +6,30 @@ from plotly.subplots import make_subplots
 from shinywidgets import output_widget, render_widget
 
 from shared import (
-    pft_words_df, pft_metrics_df,
-    CLASSIFICATION_COLOURS, CLASSIFICATION_LABELS, GROUP_COLOURS, CLUSTER_PALETTE,
+    pft_words_df, pft_metrics_df, SPLIT,
+    CLASSIFICATION_COLOURS, CLASSIFICATION_LABELS, GROUP_COLOURS,
 )
-from dementia_speech.tasks.PFT_new.clustering import assign_cluster_ids
 from dementia_speech.tasks.PFT_new.interpretation import (
     HEADLINE_MEASURES, CONTEXT_MEASURES, ERROR_HEADLINE_MEASURES,
     ERROR_EXPLORATORY_MEASURES, EXPLORATORY_MEASURES,
 )
 from dementia_speech.interpretation import BAND_COLOURS, band
 
-# Reference stats for banding, computed once at import time against the HC
-# group — see PFT_new/interpretation.py for why only `C` (and, in the error
+# Reference stats for banding, computed once at import time against the
+# TRAIN-split HC group only (see shared.SPLIT), so no participant is ever
+# scored against a distribution that includes them or a held-out test
+# case -- same fix already applied to SFT and the discrepancy score.
+# Cookie Theft's HC_STATS still uses all HC for now (separate task).
+# See PFT_new/interpretation.py for why only `C` (and, in the error
 # section, `OTH_rate`) are banded, and why several other measures that look
 # informative on their own (clustering, switching, mean AoA) aren't.
-_HC = pft_metrics_df[pft_metrics_df["diagnosis"] == "HC"]
-_ALL_BANDED = HEADLINE_MEASURES + ERROR_HEADLINE_MEASURES
-HC_STATS = {m.key: (_HC[m.key].mean(), _HC[m.key].std()) for m in _ALL_BANDED if m.key in _HC}
+_pft_split = pft_metrics_df["participant_id"].astype(str).map(SPLIT)
+_HC = pft_metrics_df[(pft_metrics_df["diagnosis"] == "HC") & (_pft_split == "TRAIN")]
+# CONTEXT_MEASURES are included here too so their cards can show a z-score
+# alongside the raw value -- they're still rendered with banded=False, so
+# no Typical/Borderline/Atypical judgement is made on them, just the number.
+_ALL_STATS_MEASURES = HEADLINE_MEASURES + ERROR_HEADLINE_MEASURES + CONTEXT_MEASURES
+HC_STATS = {m.key: (_HC[m.key].mean(), _HC[m.key].std()) for m in _ALL_STATS_MEASURES if m.key in _HC}
 
 _GROUPS = ["HC", "MCI", "Dementia"]
 
@@ -51,7 +56,7 @@ def _group_distribution_figure(metric_keys, labels, participant_row):
 
         pval = participant_row.get(metric)
         if pval is not None and not (isinstance(pval, float) and np.isnan(pval)):
-            fig.add_vline(x=pval, line=dict(color="#2c3e50", width=2, dash="dash"),
+            fig.add_vline(x=pval, line=dict(color="#1565C0", width=2, dash="dash"),
                           row=row, col=1)
 
     fig.update_layout(height=110 * len(metric_keys),
@@ -62,10 +67,63 @@ def _group_distribution_figure(metric_keys, labels, participant_row):
     return fig
 
 
+def _headline_distribution_figure(metric_keys, labels, participant_row, hc_stats):
+    """One row per metric: a violin per group (shape of the distribution,
+    PLUS an explicit mean line -- a plain density curve lost the "where's
+    the group's centre" cue a box plot gave for free), the HC "typical"
+    range (mean ± 1 SD) shaded, and a dashed line marking this
+    participant's own value (clinician focus-group feedback: replace the
+    harsh cut-off display with group curves, a shaded HC range, and the
+    person's marker).
+    """
+    fig = make_subplots(rows=len(metric_keys), cols=1,
+                        subplot_titles=labels, vertical_spacing=0.28)
+
+    for m_idx, metric in enumerate(metric_keys):
+        row = m_idx + 1
+
+        hc_mean, hc_sd = hc_stats.get(metric, (None, None))
+        if hc_mean is not None and hc_sd:
+            fig.add_vrect(x0=hc_mean - hc_sd, x1=hc_mean + hc_sd,
+                          fillcolor=GROUP_COLOURS["HC"], opacity=0.12, line_width=0,
+                          row=row, col=1)
+
+        for group in _GROUPS:
+            vals = pft_metrics_df.loc[pft_metrics_df["diagnosis"] == group, metric].dropna().values
+            if len(vals) < 2 or np.std(vals) == 0:
+                continue
+            fig.add_trace(go.Violin(
+                x=vals, y=[group] * len(vals), orientation="h", name=group,
+                line_color=GROUP_COLOURS[group], fillcolor=GROUP_COLOURS[group],
+                opacity=0.35, meanline_visible=True,
+                meanline=dict(color="#111", width=3),
+                points=False, spanmode="hard", showlegend=False,
+            ), row=row, col=1)
+        # HC at top, Dementia at bottom -- Plotly's default categorical
+        # y-axis order is "first trace added = bottom", which is the
+        # reverse of what we want here.
+        fig.update_yaxes(categoryorder="array", categoryarray=["Dementia", "MCI", "HC"],
+                          row=row, col=1)
+
+        pval = participant_row.get(metric)
+        if pval is not None and not (isinstance(pval, float) and np.isnan(pval)):
+            fig.add_vline(x=pval, line=dict(color="#1565C0", width=2, dash="dash"),
+                          row=row, col=1)
+
+    fig.update_layout(height=180 * len(metric_keys),
+                      margin=dict(t=30, b=10, l=10, r=10),
+                      plot_bgcolor="white")
+    fig.update_xaxes(gridcolor="#eee")
+    fig.update_yaxes(gridcolor="#eee")
+    return fig
+
+
 def _measure_card(measure, value, hc_mean, hc_sd, banded=True):
     """One clinical-summary card. banded=False renders a plain context card
     with no Typical/Borderline/Atypical badge (see CONTEXT_MEASURES)."""
-    value_str = measure.fmt.format(value) if value is not None and not (isinstance(value, float) and np.isnan(value)) else "—"
+    has_value = value is not None and not (isinstance(value, float) and np.isnan(value))
+    value_str = measure.fmt.format(value) if has_value else "—"
+    z_str = f"z={(value - hc_mean) / hc_sd:+.2f}" if has_value and hc_mean is not None and hc_sd else None
 
     if banded:
         label, _ = band(value, hc_mean, hc_sd, measure.higher_is_worse)
@@ -96,7 +154,11 @@ def _measure_card(measure, value, hc_mean, hc_sd, banded=True):
     return ui.div(
         badge,
         ui.div(measure.label, style="font-weight:600;font-size:1.05em;"),
-        ui.div(value_str, style="font-size:1.6em;font-weight:700;margin:2px 0;"),
+        ui.div(
+            value_str,
+            ui.span(f" ({z_str})", style="font-size:0.6em;font-weight:400;color:#888;") if z_str else None,
+            style="font-size:1.6em;font-weight:700;margin:2px 0;",
+        ),
         ui.div(measure.description, style="color:#666;font-size:0.82em;"),
         ui.div(range_str, style="color:#999;font-size:0.78em;margin-top:4px;"),
         style=(
@@ -125,6 +187,13 @@ def phonemic_fluency_ui():
         ui.h6("Compared with other participants", style="margin-top:1.2em;"),
         ui.div(
             output_widget("headline_distribution"),
+            ui.p(
+                "Coloured shapes = each group's distribution, with a dark "
+                "line at the group's mean; shaded band = HC typical range "
+                "(mean ± 1 SD). The grey dashed line is this participant's "
+                "own score.",
+                style="color:#888;font-size:0.8em;margin:4px 0 0;",
+            ),
             style="background:white;border:1px solid #e0e0e0;border-radius:8px;padding:1rem;",
         ),
         ui.hr(),
@@ -166,11 +235,13 @@ def phonemic_fluency_ui():
                     ui.accordion_panel(
                         "Additional measures (exploratory — interpret with caution)",
                         ui.p(
-                            "Clustering, switching, and mean age-of-acquisition "
-                            "each looked informative alone, but none differ "
-                            "between groups once correct-word count is "
-                            "accounted for — they mostly restate reduced "
-                            "word retrieval rather than adding new information.",
+                            "Mean age-of-acquisition looked informative alone, "
+                            "but doesn't differ between groups once "
+                            "correct-word count is accounted for — it mostly "
+                            "restates reduced word retrieval rather than "
+                            "adding new information. (Clustering/switching "
+                            "are temporarily removed from this view — still "
+                            "computed and saved in the metrics file.)",
                             style="color:#666;font-size:0.85em;",
                         ),
                         output_widget("exploratory_plot"),
@@ -203,14 +274,6 @@ def phonemic_fluency_server(input, output, session, participant_id):
         row = pft_metrics_df[pft_metrics_df["participant_id"].astype(str) == str(pid)]
         return row.iloc[0].to_dict() if len(row) else {}
 
-    @reactive.calc
-    def pclusters():
-        """Cluster id per row of pdata() (None for non-'C' words), in trial order."""
-        df = pdata()
-        correct_words = df.loc[df["classification"] == "C", "word"].tolist()
-        ids = iter(assign_cluster_ids(correct_words))
-        return [next(ids) if cls == "C" else None for cls in df["classification"]]
-
     # ── Clinical summary cards ──
     @render.ui
     def headline_panel():
@@ -221,7 +284,7 @@ def phonemic_fluency_server(input, output, session, participant_id):
             _measure_card(meas, m.get(meas.key), *HC_STATS.get(meas.key, (None, None)))
             for meas in HEADLINE_MEASURES
         ] + [
-            _measure_card(meas, m.get(meas.key), None, None, banded=False)
+            _measure_card(meas, m.get(meas.key), *HC_STATS.get(meas.key, (None, None)), banded=False)
             for meas in CONTEXT_MEASURES
         ]
         return ui.div(*cards, style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;")
@@ -244,7 +307,7 @@ def phonemic_fluency_server(input, output, session, participant_id):
             return go.Figure()
         keys = [meas.key for meas in HEADLINE_MEASURES + CONTEXT_MEASURES]
         labels = [meas.label for meas in HEADLINE_MEASURES + CONTEXT_MEASURES]
-        return _group_distribution_figure(keys, labels, m)
+        return _headline_distribution_figure(keys, labels, m, HC_STATS)
 
     @render_widget
     def error_exploratory_plot():
@@ -269,37 +332,19 @@ def phonemic_fluency_server(input, output, session, participant_id):
         df = pdata()
         if len(df) == 0:
             return ui.p("No words found for this participant.")
-        cluster_ids = pclusters()
-        cluster_sizes = Counter(c for c in cluster_ids if c is not None)
         spans = []
-        for (_, row), cluster_id in zip(df.iterrows(), cluster_ids):
+        for _, row in df.iterrows():
             cls = row["classification"]
             colour = CLASSIFICATION_COLOURS.get(cls, "#333")
             label = CLASSIFICATION_LABELS.get(cls, cls)
-            title = f"{label} ({row['start']:.2f}s)"
-            underline_colour = "transparent"
-            if cluster_id is not None:
-                underline_colour = CLUSTER_PALETTE[cluster_id % len(CLUSTER_PALETTE)]
-                title += f" — cluster {cluster_id + 1} (size {cluster_sizes[cluster_id]})"
             spans.append(ui.span(
                 row["word"],
-                title=title,
+                title=f"{label} ({row['start']:.2f}s)",
                 style=(f"display:inline-block;background-color:{colour}22;color:{colour};"
-                       f"border-top:1.5px solid {colour};border-left:1.5px solid {colour};"
-                       f"border-right:1.5px solid {colour};border-bottom:4px solid {underline_colour};"
-                       f"border-radius:4px;padding:3px 8px 1px 8px;"
+                       f"border:1.5px solid {colour};border-radius:4px;padding:3px 8px;"
                        f"margin:3px 4px;font-weight:500;"),
             ))
-        return ui.div(
-            *spans,
-            ui.p(
-                "Coloured underline = phonemic cluster (Troyer et al.); same colour, "
-                "consecutive correct words = same cluster. Colours cycle and are only "
-                "meaningful within one transcript, not across participants.",
-                style="color:#888;font-size:0.85em;margin:8px 4px 0;",
-            ),
-            style="line-height:2.8;padding:12px;",
-        )
+        return ui.div(*spans, style="line-height:2.8;padding:12px;")
 
     @render_widget
     def bin_plot():
@@ -322,7 +367,7 @@ def phonemic_fluency_server(input, output, session, participant_id):
         fig.add_trace(go.Scatter(
             x=bin_labels, y=[m.get(b, 0) for b in bins],
             mode="lines+markers", name=f"Participant {participant_id()}",
-            line=dict(color="#2c3e50", width=3), marker=dict(size=9),
+            line=dict(color="#1565C0", width=3), marker=dict(size=9),
         ))
         fig.update_layout(height=320, margin=dict(t=10, b=10, l=10, r=10),
                           plot_bgcolor="white",

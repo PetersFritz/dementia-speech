@@ -11,14 +11,19 @@ DATA_DIR = _DATA_ROOT / "processed"
 pft_words_df   = pd.read_csv(DATA_DIR / "pft_words_new.csv")
 pft_metrics_df = pd.read_csv(DATA_DIR / "pft_metrics_new.csv")
 
+# ── Semantic/category fluency data (SFT_new) ─────────────────────────────────
+sft_words_df   = pd.read_csv(DATA_DIR / "sft_words.csv")
+sft_metrics_df = pd.read_csv(DATA_DIR / "sft_metrics.csv")
+
 # ── Cookie Theft data ─────────────────────────────────────────────────────────
 ct_iu_df      = pd.read_csv(DATA_DIR / "cookie_theft_iu.csv")
 ct_metrics_df = pd.read_csv(DATA_DIR / "cookie_theft_metrics.csv")
 
 # Participant list — union across tasks, sorted
 _pft_ids = set(pft_words_df["participant_id"].astype(str))
+_sft_ids = set(sft_metrics_df["participant_id"].astype(str))
 _ct_ids  = set(ct_metrics_df["participant_id"].astype(str))
-PARTICIPANTS = sorted(_pft_ids | _ct_ids)
+PARTICIPANTS = sorted(_pft_ids | _sft_ids | _ct_ids)
 
 # ── Demographics (meta-info.csv) ──────────────────────────────────────────────
 # participant_id here is the bare numeric id used throughout the processed
@@ -37,6 +42,17 @@ def _lookup_demographics(participant_id):
     return {"age": row["age"], "gender": row["gender"], "diagnosis": row["diagnosis"]}
 
 DEMOGRAPHICS = {pid: _lookup_demographics(pid) for pid in PARTICIPANTS}
+
+def _lookup_split(participant_id):
+    key = f"{int(participant_id):03d}"
+    match = _metadata_df[_metadata_df["IDs"].astype(str).str.contains(key)]
+    return match.iloc[0]["Split"] if len(match) else None
+
+# TRAIN/TEST split -- used by SFT_new's banding reference (and the fluency
+# discrepancy score) so the HC group a participant is scored against never
+# includes that participant or a held-out test case. PFT/Cookie Theft don't
+# make this distinction yet -- see the Tier 1 dashboard TODO.
+SPLIT = {pid: _lookup_split(pid) for pid in PARTICIPANTS}
 
 # ── Memory complaints (Q2 "memory-problems" LLM extraction) ──────────────────
 # One row per finding; a participant with no findings (no_complaint/needs_review)
@@ -58,6 +74,62 @@ STATUS_LABELS = {
     "complaint":     "Complaint reported",
     "no_complaint":  "No complaint",
     "needs_review":  "Needs review",
+}
+
+# ── Finance (Q9 "finance" LLM extraction) ─────────────────────────────────────
+# One row per participant (unlike memory complaints, no multi-finding groupby needed).
+_finance_df = pd.read_csv(DATA_DIR / "finance.csv")
+_finance_df["participant_id"] = _finance_df["participant_id"].astype(str)
+
+FINANCE_BY_PARTICIPANT = {
+    pid: row.to_dict()
+    for pid, row in _finance_df.set_index("participant_id").iterrows()
+}
+
+FINANCE_STATUS_COLOURS = {
+    "extracted":    "#1D9E75",
+    "needs_review": "#BA7517",
+}
+FINANCE_STATUS_LABELS = {
+    "extracted":    "Extracted",
+    "needs_review": "Needs review",
+}
+FINANCE_MANAGER_LABELS = {
+    "self":    "Participant manages",
+    "other":   "Someone else manages",
+    "shared":  "Shared management",
+    "unclear": "Unclear",
+}
+FINANCE_MANAGER_COLOURS = {
+    "self":    "#1D9E75",  # green  -- participant still manages themself
+    "shared":  "#BA7517",  # yellow -- shared / partial
+    "unclear": "#BA7517",  # yellow
+    "other":   "#D85A30",  # orange -- someone else has taken over
+}
+FINANCE_CHANGED_LABELS = {
+    "yes":     "Changed recently",
+    "no":      "No recent change",
+    "unclear": "Unclear",
+}
+FINANCE_CHANGED_COLOURS = {
+    "no":      "#1D9E75",  # green  -- no change
+    "unclear": "#BA7517",  # yellow
+    "yes":     "#D85A30",  # orange -- a change has happened
+}
+
+# ── Fluency discrepancy (letter z-score minus category z-score) ──────────────
+# Experimental: single trial per task (vs. three summed in Wright et al. 2022)
+# and calibrated against this project's own TRAIN-split HC group, not the
+# paper's published norms -- see pipelines/score_fluency_discrepancy.py.
+# Also: on this dataset the score doesn't show the group separation the
+# paper reports -- see the fluency discrepancy discussion. Flag as
+# experimental wherever it's shown.
+_discrepancy_df = pd.read_csv(DATA_DIR / "fluency_discrepancy.csv")
+_discrepancy_df["participant_id"] = _discrepancy_df["participant_id"].astype(str)
+
+FLUENCY_DISCREPANCY_BY_PARTICIPANT = {
+    pid: row.to_dict()
+    for pid, row in _discrepancy_df.set_index("participant_id").iterrows()
 }
 
 # ── Colours (Leslie code system: C, OTH, N, PN, R, SIM, F) ────────────────────

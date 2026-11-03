@@ -19,5 +19,6 @@ source activate dementia-speech-llm
 set -euo pipefail
 
 export PYTHONNOUSERSITE=1
+export DEMENTIA_SPEECH_DATA_DIR=/mnt/parscratch/users/acp23fp/dementia-speech/data
 
 python pipelines/extract_memory_transcripts.py
