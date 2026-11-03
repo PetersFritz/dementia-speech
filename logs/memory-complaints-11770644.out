@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/mnt/parscratch/users/acp23fp/dementia-speech/pipelines/score_memory_complaints.py", line 15, in <module>
+    from dementia_speech.tasks.memory_complaints.extract import extract
+ModuleNotFoundError: No module named 'dementia_speech'
