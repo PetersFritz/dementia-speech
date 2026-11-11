@@ -139,9 +139,13 @@ TextGrid loading and never reach the scorer.
 `compute_metrics()` summarizes a scored trial as counts of each code plus:
 
 - `total_words` — all scored words in the trial
-- `errors` — `total_words` minus `C`, `F`, and `OTH` (i.e. `N + PN + R +
-  SIM`). Filled pauses and other/non-attempt speech are treated as neither
-  correct responses nor scoring errors.
+- `errors` / `error_rate` — `total_words` minus `C` and `F` (i.e.
+  `N + PN + R + SIM + OTH`), and that count as a percentage of
+  `total_words`. Redefined 2026-11-17 to include `OTH` (previously
+  excluded) — `OTH` is the one code this project's own analysis found
+  independently diagnostic (see "Error analysis" below), so leaving it out
+  of a field called "total errors" was misleading. Filled pauses are still
+  excluded: a disfluency, not a wrong response.
 - `mean_aoa_correct` — mean age-of-acquisition rating (years, Kuperman et al.
   2012) across words classified `C` that have a known rating; `None` if none
   of the trial's correct words are in the norms table. `aoa_n` reports how
@@ -304,6 +308,29 @@ don't just produce fewer correct words, the words they do produce
 disproportionately drift into off-target, non-attempt speech rather than
 nonwords, fillers, or repeats — and that pattern holds even after removing
 the part of `OTH_rate` explained by `C` alone.
+
+## Response latency
+
+`PFT_new/features.py::compute_latency_features` adds two measures from
+word-level timing already present in the TextGrid (`iwi` — inter-word
+interval, gap since the immediately preceding word): `time_to_first_correct`
+(seconds to the first real target-letter word) and `mean_iwi_correct` (mean
+gap before each correct word). Literature motivation: inter-word-interval
+duration has been linked to cognitive-impairment risk (Ayers et al., 2022,
+*Alzheimer's & Dementia: DADM*), and response timing more broadly to
+verbal/executive control in fluency tasks. Checked the same way as every
+other measure here (monotonic HC→MCI→Dementia, survives residualizing
+against `C`):
+
+| Measure | Monotonic (raw)? | `d` (HC vs. Dementia, raw) | Corr. with `C` | Monotonic after residualizing `C`? | `d` after residualizing `C` | Verdict |
+|---|---|---|---|---|---|---|
+| `time_to_first_correct` | ✅ (HC 2.0s → MCI 2.8s → Dementia 5.3s) | large (0.65) | -0.37 | ❌ (MCI residual ≈ HC's; only Dementia elevated) | 0.28, correctly directioned | Exploratory — a severity/staging signal (like Cookie Theft's `avg_x`), not a screening one: fails the 3-group monotonic bar at the MCI step even though the Dementia effect survives controlling for output |
+| `mean_iwi_correct` | ✅ | moderate (0.42) | -0.48 | ❌ (reversed) | -0.14 | Exploratory — mostly explained by `C`, same pattern as the clustering measures above |
+
+Only `time_to_first_correct` is shown on the dashboard (exploratory, not
+banded) — see `PFT_new/interpretation.py`. `mean_iwi_correct` is computed
+and saved in `pft_metrics_new.csv` but not surfaced, same treatment as the
+clustering measures it mirrors.
 
 ## Worked example
 

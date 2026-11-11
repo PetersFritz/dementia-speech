@@ -111,10 +111,27 @@ def compute_mattr(transcript: str, window: int = 25) -> dict:
     return {"mattr": round(sum(ratios) / len(ratios), 3), "mattr_window": window}
 
 
+def compute_lexical_diversity(transcript: str) -> dict:
+    """Plain type-token ratio: distinct words / total words.
+
+    This is the length-confounded measure compute_mattr() exists to fix --
+    see its docstring -- so a longer transcript mechanically scores lower
+    here even with identical vocabulary richness. Kept available alongside
+    MATTR anyway: it's a more immediately intuitive number ("what fraction
+    of the words used were different") for reading a single case, with
+    that length caveat understood rather than hidden.
+    """
+    words = tokenize_words(transcript)
+    if not words:
+        return {"lexical_diversity": None}
+    return {"lexical_diversity": round(len(set(words)) / len(words), 3)}
+
+
 def compute_lexical_metrics(transcript: str, mattr_window: int = 25) -> dict:
     """Combine all lexical-semantic measures for one transcript."""
     metrics = {}
     metrics.update(compute_lexical_density(transcript))
     metrics.update(compute_indefinite_term_rate(transcript))
     metrics.update(compute_mattr(transcript, window=mattr_window))
+    metrics.update(compute_lexical_diversity(transcript))
     return metrics

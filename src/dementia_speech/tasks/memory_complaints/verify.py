@@ -1,16 +1,11 @@
-"""Quote-grounding check: confirm each finding's evidence_quote actually appears in the transcript."""
-import re
+"""Quote-grounding check: confirm each finding's evidence_quote actually appears in the transcript.
 
+is_grounded is now a thin alias for the shared redaction-aware check -- see
+dementia_speech.tasks._shared.redaction for why evidence_quote can contain
+[NAME]/[PLACE] placeholders and still count as grounded.
+"""
+from dementia_speech.tasks._shared.redaction import is_grounded_allowing_redaction as is_grounded
 from dementia_speech.tasks.memory_complaints.schema import ComplaintResult
-
-
-def _normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", text.strip().lower())
-
-
-def is_grounded(evidence_quote: str, transcript: str) -> bool:
-    """True if evidence_quote is a substring of transcript (whitespace/case-insensitive)."""
-    return _normalize(evidence_quote) in _normalize(transcript)
 
 
 def drop_ungrounded(result: ComplaintResult, transcript: str) -> ComplaintResult:

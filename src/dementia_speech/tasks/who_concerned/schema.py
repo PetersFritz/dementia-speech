@@ -17,5 +17,10 @@ class WhoConcernedStatus(BaseModel):
     who_concerned: Concerned = "unclear"
     summary: str = Field(default="", description="One-sentence paraphrase of the answer.")
     evidence_quote: str = Field(
-        default="", description="Verbatim substring of the transcript supporting the extraction."
+        default="",
+        description=(
+            "Verbatim substring of the transcript supporting the extraction, except that any "
+            "person's name or specific place is replaced with [NAME]/[PLACE] -- see "
+            "dementia_speech.tasks._shared.redaction."
+        ),
     )

@@ -1,4 +1,5 @@
 """Question text and few-shot prompt for finance-management extraction."""
+from dementia_speech.tasks._shared.redaction import REDACTION_INSTRUCTIONS
 
 # IVA q9 (q8 on some older systems) / "finance" prompt code, per data/raw/PromptsMapping.csv.
 # Wording varies slightly by system; this is the fullest (cchat) version.
@@ -35,6 +36,8 @@ changed_recently (use exactly one of these strings):
 change_reason -- ONLY set when changed_recently is "yes", otherwise null (use exactly one of these strings):
 {_REASON_LIST}
 
+{REDACTION_INSTRUCTIONS}
+
 Respond with ONLY a single JSON object, no prose before or after it, matching this schema:
 {{
   "manager": "self" | "other" | "shared" | "unclear",
@@ -45,7 +48,8 @@ Respond with ONLY a single JSON object, no prose before or after it, matching th
 }}
 
 change_reason must be null unless changed_recently is "yes". Every evidence_quote must be copied
-character-for-character from the transcript -- do not paraphrase inside the quote."""
+character-for-character from the transcript, except where instructed above to substitute a
+redaction placeholder -- do not paraphrase inside the quote."""
 
 _FEW_SHOT_EXAMPLES = [
     (
@@ -68,6 +72,18 @@ _FEW_SHOT_EXAMPLES = [
             "summary": "Participant's husband took over finances about a year ago due to forgetfulness and confusion.",
             "evidence_quote": "My husband took it all over about a year ago because I kept forgetting to "
                 "pay things and getting confused by the statements",
+        },
+    ),
+    (
+        "My son David sorts it all out for me now, since I moved to the flat in Barnsley last year "
+        "it just got too confusing to manage myself.",
+        {
+            "manager": "other",
+            "changed_recently": "yes",
+            "change_reason": "cognitive_decline",
+            "summary": "Participant's son now manages their finances since a house move, after finding it too confusing.",
+            "evidence_quote": "My son [NAME] sorts it all out for me now, since I moved to the flat in "
+                "[PLACE] last year it just got too confusing to manage myself",
         },
     ),
 ]

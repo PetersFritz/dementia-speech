@@ -18,6 +18,49 @@ sft_metrics_df = pd.read_csv(DATA_DIR / "sft_metrics.csv")
 # ── Cookie Theft data ─────────────────────────────────────────────────────────
 ct_iu_df      = pd.read_csv(DATA_DIR / "cookie_theft_iu.csv")
 ct_metrics_df = pd.read_csv(DATA_DIR / "cookie_theft_metrics.csv")
+# Manually-transcribed CTD transcripts, for the Transcript tab's highlighted
+# text -- same directory (and the same "manual, not Whisper ASR" reasoning)
+# as score_cookie_theft.py's TRANSCRIPT_DIR, so what's displayed always
+# matches what the metrics were actually computed from. Was raw/text/CTD
+# (Whisper ASR output) until 2026-11-10, left stale when scoring switched to
+# the manual transcripts -- the mismatch this caused is exactly what a
+# participant's displayed transcript disagreeing with their own measures
+# looks like.
+CTD_TRANSCRIPT_DIR = DATA_DIR.parent / "raw" / "process" / "CTD"
+
+
+def _index_ctd_transcripts(directory):
+    """Map participant_id -> transcript path, using the exact same filename
+    convention score_cookie_theft.py's extract_participant_id() uses (split
+    the stem on "__", take the 2nd segment), normalized to a bare numeric
+    string to match ct_metrics_df's own participant_id convention (CSV
+    round-tripping already strips any zero-padding there -- see
+    _lookup_demographics's re-padding below).
+
+    This exists because the dashboard used to find a participant's
+    transcript with `directory.glob(f"*{pid}*.txt")` -- an unanchored
+    substring match that silently returns the *wrong* file whenever one
+    participant's id is a substring of another's filename (e.g. id "2"
+    matches "002", "012", "021", "102", "200", ... just as happily as the
+    actual file for participant 2), which is exactly what made one
+    participant's displayed transcript disagree with their own computed
+    measures.
+    """
+    index = {}
+    if not directory.exists():
+        return index
+    for path in directory.glob("*.txt"):
+        parts = path.stem.split("__")
+        raw_id = parts[1] if len(parts) >= 2 else path.stem
+        try:
+            pid = str(int(raw_id))
+        except ValueError:
+            pid = raw_id
+        index[pid] = path
+    return index
+
+
+CTD_TRANSCRIPT_PATHS = _index_ctd_transcripts(CTD_TRANSCRIPT_DIR)
 
 # Participant list — union across tasks, sorted
 _pft_ids = set(pft_words_df["participant_id"].astype(str))
@@ -117,6 +160,42 @@ FINANCE_CHANGED_COLOURS = {
     "yes":     "#D85A30",  # orange -- a change has happened
 }
 
+# ── Who is concerned about memory (Q3 "who-concerned" LLM extraction) ────────
+# One row per participant, same shape as finance.
+_who_concerned_df = pd.read_csv(DATA_DIR / "who_concerned.csv")
+_who_concerned_df["participant_id"] = _who_concerned_df["participant_id"].astype(str)
+
+WHO_CONCERNED_BY_PARTICIPANT = {
+    pid: row.to_dict()
+    for pid, row in _who_concerned_df.set_index("participant_id").iterrows()
+}
+
+WHO_CONCERNED_STATUS_COLOURS = {
+    "extracted":    "#1D9E75",
+    "needs_review": "#BA7517",
+}
+WHO_CONCERNED_STATUS_LABELS = {
+    "extracted":    "Extracted",
+    "needs_review": "Needs review",
+}
+WHO_CONCERNED_LABELS = {
+    "self":    "Participant themself",
+    "other":   "Someone else",
+    "both":    "Both",
+    "unclear": "Unclear",
+}
+# Neutral, not valence-coded (unlike FINANCE_MANAGER_COLOURS/FINANCE_CHANGED_COLOURS) --
+# whether it's clinically meaningful for someone *other* than the participant to be the
+# one concerned hasn't been checked against this project's own HC/MCI/Dementia groups the
+# way the headline measures have (see dementia_speech.interpretation), so this doesn't
+# claim a good/bad direction the way a green/orange scheme would.
+WHO_CONCERNED_COLOURS = {
+    "self":    "#4A7FB5",
+    "other":   "#7A6FB0",
+    "both":    "#5B9AA9",
+    "unclear": "#9e9e9e",
+}
+
 # ── Fluency discrepancy (letter z-score minus category z-score) ──────────────
 # Experimental: single trial per task (vs. three summed in Wright et al. 2022)
 # and calibrated against this project's own TRAIN-split HC group, not the
@@ -131,6 +210,10 @@ FLUENCY_DISCREPANCY_BY_PARTICIPANT = {
     pid: row.to_dict()
     for pid, row in _discrepancy_df.set_index("participant_id").iterrows()
 }
+# Whole-cohort frame (diagnosis + discrepancy_score for every participant),
+# for the per-group comparison violin plot alongside the card (app.py) --
+# same need as PFT_HEADLINE_Z/SFT_HEADLINE_Z/CT_HEADLINE_Z.
+FLUENCY_DISCREPANCY_DF = _discrepancy_df
 
 # ── Colours (Leslie code system: C, OTH, N, PN, R, SIM, F) ────────────────────
 CLASSIFICATION_COLOURS = {

@@ -14,7 +14,15 @@ from shared import (
     MEMORY_COMPLAINTS_BY_PARTICIPANT,
     STATUS_COLOURS,
     STATUS_LABELS,
+    WHO_CONCERNED_BY_PARTICIPANT,
+    WHO_CONCERNED_COLOURS,
+    WHO_CONCERNED_LABELS,
+    WHO_CONCERNED_STATUS_COLOURS,
+    WHO_CONCERNED_STATUS_LABELS,
 )
+
+
+_SUBCARD_LABEL_STYLE = "font-weight:600;color:#444;margin-bottom:6px;font-size:0.9em;"
 
 
 @module.ui
@@ -22,8 +30,26 @@ def overview_ui():
     return ui.div(
         ui.h5("Demographics"),
         ui.output_ui("demographics_card"),
-        ui.h5("Memory Complaints", style="margin-top:20px;"),
-        ui.output_ui("memory_complaints_card"),
+
+        # Paired side-by-side, not stacked -- these two answer related questions
+        # (does the participant report a concern themselves; who does the transcript
+        # say is actually worried) and a clinician scanning for agreement/disagreement
+        # between them shouldn't have to scroll past Finance to compare the two.
+        ui.h5("Memory Awareness", style="margin-top:20px;"),
+        ui.div(
+            ui.div(
+                ui.div("Self-reported complaint", style=_SUBCARD_LABEL_STYLE),
+                ui.output_ui("memory_complaints_card"),
+                style="flex:1 1 320px;",
+            ),
+            ui.div(
+                ui.div("Who is concerned", style=_SUBCARD_LABEL_STYLE),
+                ui.output_ui("who_concerned_card"),
+                style="flex:1 1 320px;",
+            ),
+            style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;",
+        ),
+
         ui.h5("Finance", style="margin-top:20px;"),
         ui.output_ui("finance_card"),
     )
@@ -167,6 +193,61 @@ def overview_server(input, output, session, participant_id):
             detail_rows.append(ui.div(row["summary"], style="margin-top:8px;"))
         if pd.notna(row.get("change_reason")):
             detail_rows.append(ui.div(row["change_reason"], style="margin-top:4px;color:#666;"))
+        if pd.notna(row.get("evidence_quote")):
+            detail_rows.append(ui.div(
+                f'"{row["evidence_quote"]}"',
+                style="color:#666;font-style:italic;font-size:0.9em;margin-top:4px;",
+            ))
+
+        return ui.div(
+            ui.div(*badges, style="display:flex;gap:6px;flex-wrap:wrap;"),
+            *detail_rows,
+            style=(
+                "background:white;border:1px solid #e0e0e0;border-radius:8px;"
+                "padding:12px 14px;max-width:40em;"
+            ),
+        )
+
+    @render.ui
+    def who_concerned_card():
+        row = WHO_CONCERNED_BY_PARTICIPANT.get(participant_id())
+        if not row:
+            return ui.p(
+                "No who-is-concerned data for this participant.",
+                style="color:#666;font-style:italic;",
+            )
+
+        status = row["status"]
+
+        if status != "extracted":
+            badge = ui.span(
+                WHO_CONCERNED_STATUS_LABELS.get(status, status),
+                style=(
+                    f"background:{WHO_CONCERNED_STATUS_COLOURS.get(status, '#999')};color:white;"
+                    "padding:3px 10px;border-radius:12px;font-size:0.82em;font-weight:600;"
+                ),
+            )
+            return ui.div(badge, style=(
+                "background:white;border:1px solid #e0e0e0;border-radius:8px;"
+                "padding:12px 14px;max-width:40em;"
+            ))
+
+        # status == "extracted" is the normal case, not worth a badge of its own --
+        # only the who_concerned badge below carries useful information.
+        badges = []
+        if pd.notna(row.get("who_concerned")):
+            badges.append(ui.span(
+                WHO_CONCERNED_LABELS.get(row["who_concerned"], row["who_concerned"]),
+                style=(
+                    f"background:{WHO_CONCERNED_COLOURS.get(row['who_concerned'], '#999')};"
+                    "color:white;padding:3px 10px;border-radius:12px;"
+                    "font-size:0.82em;font-weight:600;"
+                ),
+            ))
+
+        detail_rows = []
+        if pd.notna(row.get("summary")):
+            detail_rows.append(ui.div(row["summary"], style="margin-top:8px;"))
         if pd.notna(row.get("evidence_quote")):
             detail_rows.append(ui.div(
                 f'"{row["evidence_quote"]}"',

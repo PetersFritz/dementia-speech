@@ -8,6 +8,8 @@
 # version, same convention as finance/prompt.py. (iva1 bundles this with a separate
 # short-term-weekend question into one "crnstw" code -- irrelevant here since no
 # participant in this dataset uses iva1.)
+from dementia_speech.tasks._shared.redaction import REDACTION_INSTRUCTIONS
+
 QUESTION_TEXT = (
     "WHO IS MOST WORRIED ABOUT YOUR MEMORY? IS IT YOU, OR SOMEBODY ELSE? "
     "AND CAN YOU GIVE AN EXAMPLE OF THE LAST TIME YOUR MEMORY LET YOU DOWN."
@@ -26,6 +28,8 @@ who_concerned (use exactly one of these strings):
 - "both": the participant says both themselves and someone else are worried
 - "unclear": the answer doesn't make this clear
 
+{REDACTION_INSTRUCTIONS}
+
 Respond with ONLY a single JSON object, no prose before or after it, matching this schema:
 {{
   "who_concerned": "self" | "other" | "both" | "unclear",
@@ -33,8 +37,8 @@ Respond with ONLY a single JSON object, no prose before or after it, matching th
   "evidence_quote": "<verbatim substring copied exactly from the transcript>"
 }}
 
-Every evidence_quote must be copied character-for-character from the transcript -- do not
-paraphrase inside the quote."""
+Every evidence_quote must be copied character-for-character from the transcript, except where
+instructed above to substitute a redaction placeholder -- do not paraphrase inside the quote."""
 
 _FEW_SHOT_EXAMPLES = [
     (
@@ -53,6 +57,16 @@ _FEW_SHOT_EXAMPLES = [
             "who_concerned": "other",
             "summary": "Participant's daughter is worried about their memory; participant doesn't notice it themselves.",
             "evidence_quote": "My daughter keeps telling me I repeat myself",
+        },
+    ),
+    (
+        "My daughter Sarah keeps an eye on it really, she lives over in Rotherham and she's the one "
+        "who noticed I'd forgotten her birthday twice.",
+        {
+            "who_concerned": "other",
+            "summary": "Participant's daughter is the one who is worried, having noticed forgotten birthdays.",
+            "evidence_quote": "My daughter [NAME] keeps an eye on it really, she lives over in [PLACE] "
+                "and she's the one who noticed I'd forgotten her birthday twice",
         },
     ),
 ]

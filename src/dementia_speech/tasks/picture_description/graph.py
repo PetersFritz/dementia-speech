@@ -61,6 +61,18 @@ def _resolve_image_path() -> str:
 IMAGE_PATH = _resolve_image_path()
 IMAGE_HEIGHT = 592  # used for the metric-convention y-flip
 
+with Image.open(IMAGE_PATH) as _img:
+    _IMAGE_PIXEL_WIDTH, _IMAGE_PIXEL_HEIGHT = _img.size
+
+# The height render_graph_plotly's figure renders at (520px assumed column
+# width, scaled to the image's own aspect ratio -- see the height= line in
+# render_graph_plotly below). Exported so app/modules/cookie_theft.py can
+# size the transcript and IU checklist panels to this same height when shown
+# alongside the picture in a row.
+GRAPH_FIGURE_HEIGHT = (
+    int(520 * _IMAGE_PIXEL_HEIGHT / _IMAGE_PIXEL_WIDTH) if _IMAGE_PIXEL_WIDTH else 520
+)
+
 # Raw annotation coordinates (origin top-left, y downward) — canonical
 # definitions live in registry.py, shared with the IU checklist in scoring.py.
 CIU_COORDINATES_RAW = _REGISTRY_COORDINATES_RAW
@@ -135,6 +147,17 @@ def total_path_per_unique_nodes(seq, coords):
         return 0.0
     return total_path_distance(seq, coords) / len(unique)
 
+def total_path_per_node(seq, coords):
+    """Path distance per mention, counting every occurrence (not just
+    distinct IUs, unlike total_path_per_unique_nodes above) -- so a
+    participant who repeatedly revisits the same few IUs is distinguished
+    from one who visits as many different locations the same number of
+    times; the unique-node version can't tell those two patterns apart.
+    """
+    if not seq:
+        return 0.0
+    return total_path_distance(seq, coords) / len(seq)
+
 def self_cycles(seq):
     return sum(1 for i in range(1, len(seq)) if seq[i] == seq[i - 1])
 
@@ -204,6 +227,7 @@ def calculate_metrics(ciu_sequence, ciu_coordinates, image_width, image_height) 
         "spatial_left_bias": round((image_width / 2 - a_x) / (image_width / 2), 3),
         "total_path_distance": total_path_distance(ciu_sequence, ciu_coordinates),
         "total_path_per_unique_nodes": total_path_per_unique_nodes(ciu_sequence, ciu_coordinates),
+        "total_path_per_node": total_path_per_node(ciu_sequence, ciu_coordinates),
         "self_cycles": self_cycles(ciu_sequence),
         "cycles": cycles(ciu_sequence),
         "nodes": total_nodes(ciu_sequence),
@@ -255,7 +279,7 @@ def render_graph_plotly(
     if edge_x:
         fig.add_trace(go.Scatter(
             x=edge_x, y=edge_y, mode="lines",
-            line=dict(color=edge_colour, width=2),
+            line=dict(color=edge_colour, width=0),
             hoverinfo="skip", showlegend=False,
         ))
 
@@ -274,8 +298,8 @@ def render_graph_plotly(
         x=node_x, y=node_y, mode="markers+text",
         marker=dict(color=node_colour, size=node_size, opacity=0.65,
                     line=dict(color="white", width=1.5)),
-        text=node_text, textposition="top center",
-        textfont=dict(size=10, color="#222"),
+        #text=node_text, textposition="top center",
+        #textfont=dict(size=10, color="#222"),
         hovertext=node_hover, hoverinfo="text", showlegend=False,
     ))
 

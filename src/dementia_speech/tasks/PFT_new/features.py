@@ -40,3 +40,33 @@ def compute_temporal_bins(
 
     counts = correct['bin'].value_counts().reindex(bin_labels, fill_value=0)
     return counts.to_dict()
+
+
+def compute_latency_features(scored_df: pd.DataFrame) -> dict:
+    """Response-latency features from word-level timing -- candidate
+    additional measures (not yet checked against C the way the rest of
+    this task's measures were; see docs/pft_new_scoring.md "Response
+    latency"). Literature: inter-word-interval duration has been linked to
+    cognitive-impairment risk (Ayers et al., 2022, Alzheimer's & Dementia:
+    DADM) and response timing more broadly to verbal/executive control in
+    fluency tasks.
+
+    time_to_first_correct -- onset of the first correct ('C') word, in
+    seconds: a retrieval-initiation measure (how long before any real
+    attempt lands).
+    mean_iwi_correct -- mean inter-word interval (`iwi`: gap since the
+    immediately preceding word, any classification -- see
+    io/textgrid.py::load_word_tier) before each correct word: a
+    word-finding-effort measure. The trial's very first word has no prior
+    word to measure from (`iwi` is NaN there) and is dropped rather than
+    treated as a zero-length pause.
+    """
+    correct = scored_df[scored_df['classification'] == 'C'].sort_values('start')
+    if len(correct) == 0:
+        return {"time_to_first_correct": None, "mean_iwi_correct": None}
+
+    iwi = correct['iwi'].dropna()
+    return {
+        "time_to_first_correct": float(correct['start'].iloc[0]),
+        "mean_iwi_correct": float(iwi.mean()) if len(iwi) else None,
+    }

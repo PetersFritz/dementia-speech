@@ -25,7 +25,7 @@ from dementia_speech.paths import DATA_DIR
 METRICS_PATH = DATA_DIR / "processed/sft_metrics.csv"
 
 GROUPS = ["HC", "MCI", "Dementia"]
-RATES = ["OTH_rate", "R_rate", "F_rate"]
+RATES = ["OTH_rate", "R_rate", "F_rate", "N_rate"]
 
 
 def cohens_d(a: pd.Series, b: pd.Series) -> float:

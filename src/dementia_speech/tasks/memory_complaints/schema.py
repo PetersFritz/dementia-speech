@@ -25,7 +25,11 @@ class Finding(BaseModel):
     domain: Domain
     summary: str = Field(description="One-sentence paraphrase of the complaint.")
     evidence_quote: str = Field(
-        description="Verbatim substring of the transcript supporting this finding."
+        description=(
+            "Verbatim substring of the transcript supporting this finding, except that any "
+            "person's name or specific place is replaced with [NAME]/[PLACE] -- see "
+            "dementia_speech.tasks._shared.redaction."
+        )
     )
 
 

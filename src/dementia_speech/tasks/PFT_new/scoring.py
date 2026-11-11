@@ -124,14 +124,18 @@ def compute_metrics(scored_df: pd.DataFrame) -> dict:
     -------
     dict
         total_words, per-code counts (C, OTH, N, PN, R, SIM, F), and errors
-        (everything except 'C', 'F' and 'OTH' -- filled pauses and other/
-        non-attempt speech are neither correct responses nor scoring errors)
+        (everything except 'C' and 'F' -- a filled pause is a disfluency,
+        not a wrong response, but 'OTH' (off-target speech) IS counted as an
+        error here, unlike this field's pre-2026-11-17 definition: OTH is
+        the one code this project's own analysis found independently
+        diagnostic, so excluding it from "total errors" would be
+        misleading. See docs/pft_new_scoring.md.)
     """
     if len(scored_df) == 0:
         return {
             'total_words': 0,
             'C': 0, 'OTH': 0, 'N': 0, 'PN': 0, 'R': 0, 'SIM': 0, 'F': 0,
-            'errors': 0,
+            'errors': 0, 'error_rate': None,
             'OTH_rate': None, 'N_rate': None, 'PN_rate': None,
             'R_rate': None, 'SIM_rate': None, 'F_rate': None,
             'mean_aoa_correct': None, 'aoa_n': 0,
@@ -160,7 +164,8 @@ def compute_metrics(scored_df: pd.DataFrame) -> dict:
         'R': r,
         'SIM': sim,
         'F': fillers,
-        'errors': total_words - correct - fillers - other,
+        'errors': total_words - correct - fillers,
+        'error_rate': round(100 * (total_words - correct - fillers) / total_words, 2),
         # Per-100-word rates for each code, so groups/individuals can be
         # compared irrespective of how many words they produced overall --
         # see docs/pft_new_scoring.md "Error analysis" for which of these

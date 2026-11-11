@@ -1,4 +1,11 @@
-"""Score all Cookie Theft transcripts: IU coverage + spatio-semantic graph metrics."""
+"""Score all Cookie Theft transcripts: IU coverage + spatio-semantic graph metrics.
+
+Reads data/raw/process/CTD/ -- manually-transcribed free text, not the Whisper
+ASR output in data/raw/text/CTD/ (same switch SFT already made, and for the
+same reason: scoring shouldn't run on uncorrected ASR text when a manual
+transcript exists). See picture_description/scoring.py::load_transcript for
+the Pat:/Oth:/Int: speaker-turn and annotation stripping this relies on.
+"""
 import os
 import json
 from pathlib import Path
@@ -14,6 +21,8 @@ from dementia_speech.tasks.picture_description.scoring import (
     extract_information_units,
     compute_iu_metrics,
     compute_efficiency_metrics,
+    compute_semantic_relevance,
+    compute_iu_mention_density,
     get_iu_sequence_unique,
     get_iu_sequence_full,
 )
@@ -23,9 +32,18 @@ from dementia_speech.tasks.picture_description.graph import (
     IMAGE_PATH,
 )
 from dementia_speech.tasks.picture_description.lexical import compute_lexical_metrics
+from dementia_speech.tasks.picture_description.registry import COORDINATES_RAW
+from dementia_speech.tasks.picture_description.candidate_measures import (
+    compute_region_metrics,
+    compute_repetition_metrics,
+    compute_noun_verb_ratio,
+    compute_syllable_metrics,
+    compute_audio_duration_metrics,
+)
 from dementia_speech.paths import DATA_DIR
 
-TRANSCRIPT_DIR = DATA_DIR / "raw/text/CTD"
+TRANSCRIPT_DIR = DATA_DIR / "raw/process/CTD"
+WAV_DIR        = DATA_DIR / "raw/process/wav/CTD"
 METADATA_PATH  = DATA_DIR / "raw/meta-info.csv"
 OUTPUT_IU      = DATA_DIR / "processed/cookie_theft_iu.csv"
 OUTPUT_METRICS = DATA_DIR / "processed/cookie_theft_metrics.csv"
@@ -64,6 +82,12 @@ def main():
             # Coverage, efficiency, and lexical-semantic metrics
             metrics = compute_iu_metrics(iu_results)
             metrics.update(compute_efficiency_metrics(transcript, iu_results))
+            metrics["semantic_relevance"] = compute_semantic_relevance(
+                metrics["mentioned_ius"], metrics["total_words"]
+            )
+            metrics["iu_mention_density"] = compute_iu_mention_density(
+                metrics["total_mentions"], metrics["total_words"]
+            )
             metrics.update(compute_lexical_metrics(transcript))
  
             # Two sequences
@@ -116,6 +140,45 @@ def main():
             row["iu_sequence_unique"] = json.dumps(seq_unique)
             row["iu_sequence_full"]   = json.dumps(seq_full)
             row["iu_sequence_readable"] = " > ".join(seq_unique)
+
+            # Additional measures (2026-11-11 dashboard extension) -- see
+            # docs/cookie_theft_scoring.md for how these were screened
+            # (TRAIN/TEST direction-stability, not just full-sample AUC).
+            region_metrics = compute_region_metrics(iu_results, COORDINATES_RAW, img_width, img_height)
+            row["content_units_by_region"] = json.dumps(region_metrics["content_units_by_region"])
+            row["left_right_cu_ratio"] = region_metrics["left_right_cu_ratio"]
+
+            row.update(compute_repetition_metrics(transcript, total_words))
+            row.update(compute_noun_verb_ratio(transcript))
+
+            # syllables_per_content_unit only -- total_syllables itself isn't
+            # shown standalone, it tracks total_words too closely to earn its
+            # own dashboard slot (2026-11-17 decision).
+            total_syllables = compute_syllable_metrics(transcript)["total_syllables"]
+            mentioned_ius = metrics["mentioned_ius"]
+            row["syllables_per_content_unit"] = (
+                round(total_syllables / mentioned_ius, 2) if mentioned_ius else None
+            )
+
+            # Speech duration from the matching wav -- energy-based silence
+            # trim, not forced alignment/diarization (see candidate_measures
+            # module docstring for the interviewer-contamination caveat on
+            # the small minority of recordings with an Oth/Int speaker).
+            wav_path = WAV_DIR / (txt_path.stem + ".wav")
+            if wav_path.exists():
+                audio_metrics = compute_audio_duration_metrics(wav_path)
+                row["speech_duration_seconds"] = audio_metrics["speech_duration_seconds"]
+                dur_min = (
+                    audio_metrics["speech_duration_seconds"] / 60
+                    if audio_metrics.get("speech_duration_seconds") else None
+                )
+                row["content_units_per_minute"] = (
+                    round(mentioned_ius / dur_min, 2) if dur_min else None
+                )
+            else:
+                row["speech_duration_seconds"] = None
+                row["content_units_per_minute"] = None
+
             all_metrics.append(row)
  
         except Exception as e:

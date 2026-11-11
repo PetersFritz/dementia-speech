@@ -23,7 +23,7 @@ Code IDs in brackets refer to the reworked codebook (e.g. D7 = written summary).
 - [ ] **"Closest group"** is named only if its share >= 0.5, otherwise "no clear group". Chart caption only, never the summary headline.
 - [ ] **Measure direction**: record per measure whether lower is worse, higher is worse, or two-sided (e.g. discrepancy score).
 - [ ] **"Normal overall" rule**: define so that chance flags across ~20 measures don't make almost everyone abnormal.
-- [ ] **Confounders to show**: years of education confirmed; age and others to decide. [B2, B3] (education isn't currently in `data/raw/meta-info.csv` — needs sourcing, or this decision needs revisiting)
+- [ ] **Confounders to show**: years of education confirmed; age and others to decide. [B2, B3] (education isn't currently in `data/raw/meta-info.csv` — but `CognoSpeak_metadata__2026_06_07.csv` has `EDUCATION_INFO` and `MoCA years of education` for new-CognoSpeak participants, same source as the assessment-date join; not yet pulled in — would need its own join + a decision on which of the two columns to use, and still leaves old-CognoSpeak participants without it)
 - [ ] **Measures gated out**: measures with weak separation (AUC below a threshold, placeholder 0.65) are shown as "not informative alone" and excluded from the overall rule.
 
 ## Tier 0: audit (do first)
@@ -68,14 +68,29 @@ Code IDs in brackets refer to the reworked codebook (e.g. D7 = written summary).
 - [ ] Mood and anxiety scores, possibly a separate tab. [X4]
 - [ ] Engagement: words produced and time taken, compared with group means. Caution: may disadvantage the dementia group. [N1, N2, N3, N4]
 - [ ] Self-correction measure. [I1, I2]
-- [ ] "Who is concerned about memory" item. [X5]
+- [x] "Who is concerned about memory" item — built (`pipelines/score_who_concerned.py`,
+      Overview tab, paired with Memory Complaints under "Memory Awareness"). [X5]
 
 ## Tier 2: recent-news question (separate pipeline)
 
-Depends on recording dates being present. If not, show words and duration for this question instead. (checked ahead of time: no recording-date field found in `data/raw/meta-info.csv` or `Process_demographics.csv` — expect to need the fallback for everyone unless a date source turns up elsewhere)
+~~Depends on recording dates being present... no recording-date field found~~ — resolved:
+`CognoSpeak_metadata__2026_06_07.csv`'s `assess_date` column (joined onto
+`Process_demographics.csv` as `assessment_date` by `pipelines/scratch/add_assessment_dates.py`)
+covers new-CognoSpeak participants; two files had no timestamp and were left blank
+manually. Old-CognoSpeak participants still have no date and stay on the words/duration
+fallback.
 
-- [ ] Write `docs/news_scoring_rules.md`: "recent" window (placeholder 42 days), categories (matches in-window event, real but outdated, vague, none or wrong, unverifiable), 0-3 rubric.
-- [ ] Build a cached event list for the recording dates only: Wikipedia current-events pages plus Guardian UK/world/politics headlines. Keep the source URL per event.
+- [ ] Write `docs/news_scoring_rules.md`: "recent" window (**7 days, per GPCOG's own
+      recent-news item** — not the 42-day placeholder below), categories (matches
+      in-window event, real but outdated, vague, none or wrong, unverifiable), 0-3 rubric.
+- [x] Build a cached event list -- `pipelines/build_news_event_cache.py`: Wikipedia
+      Portal:Current_events pages (headline = full event sentence) + Guardian
+      uk-news/world/politics (headline + trailText summary), source URL kept per event,
+      cached per day under `data/raw/news_cache/`. In progress: Guardian's free-tier
+      500 calls/day cap means a full backfill (1034 unique days as of 2026-11-09) takes
+      several days' worth of reruns. No local South Yorkshire source added (Guardian is
+      national-only, BBC's regional feed has no historical archive) -- revisit once
+      hand-rating shows whether that's actually costing match accuracy.
 - [ ] Local Qwen matches each answer to candidate events (JSON output, temperature 0). Date logic and final score are computed in code, not by the model.
 - [ ] Unsure or inconsistent model output becomes missing, never zero. Log raw output, model name, prompt version.
 - [ ] Review the "unverifiable" answers, add frequent missing events, re-run.

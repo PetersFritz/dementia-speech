@@ -1,4 +1,5 @@
 """Question text, domain taxonomy, and the few-shot prompt for memory-complaint extraction."""
+from dementia_speech.tasks._shared.redaction import REDACTION_INSTRUCTIONS
 
 # IVA q2 / "memory-problems" prompt code, per data/raw/PromptsMapping.csv.
 QUESTION_TEXT = "TELL ME WHAT PROBLEMS HAVE YOU HAD WITH YOUR MEMORY"
@@ -28,6 +29,8 @@ or explicitly denies having memory problems, that is NOT a memory complaint.
 Domains (use exactly one of these strings per finding):
 {_DOMAIN_LIST}
 
+{REDACTION_INSTRUCTIONS}
+
 Respond with ONLY a single JSON object, no prose before or after it, matching this schema:
 {{
   "status": "complaint" | "no_complaint",
@@ -38,7 +41,8 @@ Respond with ONLY a single JSON object, no prose before or after it, matching th
 }}
 
 If status is "no_complaint", findings must be an empty list. Every evidence_quote must be copied
-character-for-character from the transcript -- do not paraphrase inside the quote."""
+character-for-character from the transcript, except where instructed above to substitute a
+redaction placeholder -- do not paraphrase inside the quote."""
 
 _FEW_SHOT_EXAMPLES = [
     (
@@ -56,6 +60,21 @@ _FEW_SHOT_EXAMPLES = [
                     "domain": "short_term_memory",
                     "summary": "Has started writing notes to compensate for forgetting recent conversations.",
                     "evidence_quote": "I forget what my daughter tells me on the phone sometimes",
+                },
+            ],
+        },
+    ),
+    (
+        "My daughter Emma says I asked her the same thing three times last week when she visited "
+        "from Leeds, I don't even remember the conversation at all.",
+        {
+            "status": "complaint",
+            "findings": [
+                {
+                    "domain": "short_term_memory",
+                    "summary": "Participant repeated the same question several times and has no memory of the conversation.",
+                    "evidence_quote": "My daughter [NAME] says I asked her the same thing three times last "
+                        "week when she visited from [PLACE], I don't even remember the conversation at all",
                 },
             ],
         },

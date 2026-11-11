@@ -3,14 +3,25 @@
 import re
 from pathlib import Path
 
+from dementia_speech.tasks._shared.manual_transcript import extract_patient_speech
 from dementia_speech.tasks.picture_description.registry import SYNONYMS
 
 WORD_PATTERN = re.compile(r"[a-z']+")
 
 def load_transcript(path: Path) -> str:
-    """Load a plain text transcript file, lowercased and stripped."""
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read().strip().lower()
+    """Load a manually-transcribed CTD transcript (data/raw/process/CTD/),
+    keeping only the participant's own speech and stripping transcriber
+    annotations, lowercased and stripped -- same convention as SFT_new's
+    manual transcripts (see dementia_speech.tasks._shared.manual_transcript),
+    since these come from the same transcription process and tagging/
+    annotation style. Previously read the Whisper ASR output in
+    data/raw/text/CTD/ directly with no cleaning; switched 2026-11-10 for the
+    same reason SFT already had -- scoring shouldn't run on uncorrected ASR
+    text when a manually-transcribed version exists.
+    """
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        raw_text = f.read()
+    return extract_patient_speech(raw_text).strip().lower()
  
  
 def extract_information_units(
@@ -110,6 +121,40 @@ def tokenize_words(transcript: str) -> list:
     are computed identically wherever they're used.
     """
     return WORD_PATTERN.findall(transcript.lower())
+
+
+def compute_semantic_relevance(mentioned_ius: int, total_words: int) -> float | None:
+    """Semantic Relevance (SemR), Stegmann et al. (2022): unique information units
+    mentioned divided by total words produced.
+
+    Numerator is the same `mentioned_ius` count `compute_iu_metrics` returns (synonyms
+    already collapsed onto one IU each by `extract_information_units`, and each IU
+    counted once no matter how many times it's mentioned). Denominator is the same
+    `total_words` `compute_efficiency_metrics` returns (every word, including
+    off-target ones -- SemR is a density measure, not a coverage-conditional one).
+    Pass both in rather than recomputing them so this only ever disagrees with those
+    two functions if they themselves change, not from a second, slightly different
+    counting pass.
+
+    Full precision, unlike iu_score's rounding -- Stegmann et al.'s reported effect
+    sizes are on the raw ratio.
+    """
+    return mentioned_ius / total_words if total_words > 0 else None
+
+
+def compute_iu_mention_density(total_mentions: int, total_words: int) -> float | None:
+    """IU mentions per word, repeats included: total_mentions / total_words.
+
+    Deliberately a *different* number from compute_semantic_relevance() above
+    (which is Stegmann et al.'s cited definition, unique IUs only, repeats
+    excluded by design) -- this is the repeats-included counterpart some
+    readers may want instead, kept under its own name rather than redefining
+    the cited SemR formula. Numerically this is the same quantity as
+    compute_efficiency_metrics()'s `iu_mentions_per_100_words`, just on a 0-1
+    scale instead of per-100-words -- provided anyway since that's the exact
+    unscaled ratio that was asked for.
+    """
+    return total_mentions / total_words if total_words > 0 else None
 
 
 def compute_efficiency_metrics(transcript: str, iu_results: dict) -> dict:

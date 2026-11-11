@@ -7,40 +7,54 @@ by the transcriber. This module parses that format directly rather than
 iterating aligned word tiers: splits speaker turns, strips annotations, and
 tokenizes the patient's own speech into candidate animal-name items.
 
-Classification codes (deliberately a smaller set than PFT_new's Leslie
-codes -- see the SFT scoring discussion: no nonword/proper-noun/similarity
-codes, since the animal list is itself the only dictionary that matters
-here):
+Classification codes (a smaller set than PFT_new's Leslie codes -- no
+proper-noun or similarity codes, since the animal list is itself the only
+dictionary that matters here, and there's no clean animal-naming analog for
+"morphological/synonym variant of an earlier correct word." A nonword code
+*was* added (2026-11-17), splitting what used to be a single catch-all
+"intrusion" bucket -- sampling it showed a real mix of genuine real-word
+intrusions ("car", narration asides like "I can't think") and fragments/
+false starts that were never real word attempts ("alpac", "de-de", "ka"),
+the same distinction PFT_new's N vs. OTH draws):
   C   -- correct, first mention of a known animal
   R   -- repetition of an earlier 'C' animal
-  OTH -- intrusion (not a known animal)
+  N   -- nonword: not a known animal, and not a real English word either
+         (fragment/false start -- see PFT_new.rules.is_real_word)
+  OTH -- intrusion: not a known animal, but a real word/narration aside
   F   -- filled pause (um, er, ...)
 """
 import re
 
 import pandas as pd
 
-from dementia_speech.tasks.PFT_new.rules import is_filler, is_repetition
+from dementia_speech.tasks._shared.manual_transcript import parse_speaker_turns, strip_annotations
+from dementia_speech.tasks.PFT_new.rules import is_filler, is_real_word, is_repetition
+from dementia_speech.tasks.SFT_new.clustering import compute_cluster_metrics
 from dementia_speech.tasks.SFT_new.rules import canonical_key, get_aoa, is_animal, normalize_word
 
 _CLASSIFICATION_COLUMN = "classification"
 
-# Speaker turns are tagged at the start of a line, e.g. "Pat: Cat, dog..." or
-# "Oth: Keep going...". A transcript with no tag at all (144/400 files) is
-# treated as one continuous Pat turn by parse_speaker_turns().
-_SPEAKER_TURN_RE = re.compile(r"(?m)^\s*(Pat|Oth\d*|Int)\s*:\s*")
-
-# Parenthetical/angle-bracket annotations are always noise in these
-# transcripts -- pause durations ("(3 seconds)"), the task buzzer
-# ("(buzzer sounds)"), unclear speech ("(?)"), and non-speech sounds
-# ("(sighs)", "(laughs)", "(tuts)", ...), plus a couple of "<laugh>"/
-# "<lugh>" tags. Stripped wholesale rather than enumerated by phrase, since
-# every instance found across all 400 transcripts was non-content.
-_ANNOTATION_RE = re.compile(r"\([^)]*\)|<[^>]*>")
-
 # Segments are split on sentence/list punctuation. ";" shows up occasionally
 # in place of a comma (e.g. "shark; oh I've said that.").
 _SEGMENT_SPLIT_RE = re.compile(r"[,.;?!]+")
+
+# is_real_word()'s dictionaries (WordNet + nltk's words corpus) don't cover
+# contractions or possessives at all -- "can't", "it's", "cetti's" all fail
+# it even though they're ordinary English, not fragments/false starts. Found
+# while sampling this task's narration-heavy speech for the new 'N' code
+# (contractions are rare in PFT's rapid-fire word lists, so this never
+# surfaced there). A word ending in one of these suffixes is accepted as a
+# real word regardless of its stem -- the clitic itself is what makes it
+# grammatical ("cetti's", a possessive of a proper noun, is just as
+# legitimate as "dog's"), unlike a genuine fragment such as "ka" or "de-de".
+_CONTRACTION_SUFFIXES = ("'s", "'t", "'re", "'ve", "'ll", "'d", "'m")
+
+
+def _is_real_word_or_contraction(word: str) -> bool:
+    normalized = word.replace("’", "'")
+    if normalized.lower().endswith(_CONTRACTION_SUFFIXES):
+        return True
+    return is_real_word(word)
 
 # Pure connective/grammatical glue words -- dropped silently rather than
 # scored as an intrusion. "camel and sheep" (no Oxford comma) is two correct
@@ -51,37 +65,6 @@ _CONNECTIVE_STOPWORDS = {
     "and", "or", "a", "an", "the", "to", "of", "in", "on", "for", "as",
     "is", "are", "it", "that", "this",
 }
-
-
-def parse_speaker_turns(text: str) -> list[tuple[str, str]]:
-    """Split a transcript into [(speaker, turn_text), ...] in order.
-
-    Speaker is normalised to its base tag ("Oth2" -> "Oth") -- scoring only
-    cares about Pat vs. not-Pat, not which bystander/assistant spoke. A
-    transcript with no speaker tag at all is returned as a single
-    ("Pat", text) turn. Several files start with untagged speech and only
-    pick up a tag later (e.g. an "Oth:" interjection midway through) -- any
-    text before the first tag is the patient's own, so it becomes a
-    leading ("Pat", ...) turn rather than being silently dropped.
-    """
-    matches = list(_SPEAKER_TURN_RE.finditer(text))
-    if not matches:
-        return [("Pat", text)]
-
-    turns = []
-    if matches[0].start() > 0:
-        turns.append(("Pat", text[:matches[0].start()]))
-    for i, m in enumerate(matches):
-        speaker = "Oth" if m.group(1).startswith("Oth") else m.group(1)
-        start = m.end()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        turns.append((speaker, text[start:end]))
-    return turns
-
-
-def strip_annotations(text: str) -> str:
-    """Remove parenthetical/angle-bracket annotations -- see _ANNOTATION_RE."""
-    return _ANNOTATION_RE.sub(" ", text)
 
 
 def tokenize_pat_turn(text: str) -> list[str]:
@@ -104,19 +87,27 @@ def _classify_segment_words(
 
     If NONE of the words are animals even individually, the whole phrase is
     scored as a single intrusion (e.g. a narration aside like "and through
-    Africa we went" is one off-target utterance, not five). Otherwise,
-    scans left to right taking the longest animal-name match at each
-    position (up to _MAX_PHRASE_WORDS words) before falling back to a
-    single word -- needed because a whole-phrase-or-split-every-word
-    approach breaks on e.g. "mouse guinea pig" (two items, no comma between
-    them, one of which is itself two words): greedy matching gets "mouse"
-    then "guinea pig", instead of wrongly splitting "guinea" off on its own.
+    Africa we went" is one off-target utterance, not five) -- always 'OTH',
+    never 'N': a multi-word phrase is narration, not a single failed word-
+    finding attempt, and a single-word segment that isn't a real word (e.g.
+    "ka") gets 'N' via the same check used below. Otherwise, scans left to
+    right taking the longest animal-name match at each position (up to
+    _MAX_PHRASE_WORDS words) before falling back to a single word -- needed
+    because a whole-phrase-or-split-every-word approach breaks on e.g.
+    "mouse guinea pig" (two items, no comma between them, one of which is
+    itself two words): greedy matching gets "mouse" then "guinea pig",
+    instead of wrongly splitting "guinea" off on its own. A non-matching
+    single word at any position is 'N' if it isn't a real English word
+    either (fragment/false start), 'OTH' otherwise (genuine intrusion).
     """
     if not words:
         return []
 
     if not any(is_animal(w) for w in words):
-        return [(" ".join(words), "OTH")]
+        phrase = " ".join(words)
+        if len(words) == 1 and not _is_real_word_or_contraction(words[0]):
+            return [(phrase, "N")]
+        return [(phrase, "OTH")]
 
     results = []
     i, n = 0, len(words)
@@ -132,7 +123,8 @@ def _classify_segment_words(
                 i += window
                 break
         else:
-            results.append((words[i], "OTH"))
+            word = words[i]
+            results.append((word, "N" if not _is_real_word_or_contraction(word) else "OTH"))
             i += 1
     return results
 
@@ -183,15 +175,18 @@ def compute_metrics(scored_df: pd.DataFrame, oth_turn_count: int) -> dict:
     """Summarize classification counts/rates for one participant's trial."""
     if len(scored_df) == 0:
         return {
-            "total_items": 0, "C": 0, "R": 0, "OTH": 0, "F": 0,
-            "R_rate": None, "OTH_rate": None, "F_rate": None,
+            "total_items": 0, "C": 0, "R": 0, "OTH": 0, "F": 0, "N": 0,
+            "errors": 0, "error_rate": None,
+            "R_rate": None, "OTH_rate": None, "F_rate": None, "N_rate": None,
             "mean_aoa_correct": None, "aoa_n": 0,
+            "n_clusters": 0, "n_switches": 0,
+            "mean_cluster_size": None, "largest_cluster_size": 0,
             "oth_turn_count": oth_turn_count,
         }
 
     counts = scored_df[_CLASSIFICATION_COLUMN].value_counts().to_dict()
     total = len(scored_df)
-    c, r, oth, f = (counts.get(code, 0) for code in ("C", "R", "OTH", "F"))
+    c, r, oth, f, n = (counts.get(code, 0) for code in ("C", "R", "OTH", "F", "N"))
 
     # Mean age-of-acquisition (years, Kuperman et al. 2012) of correct
     # animal names with a known rating; aoa_n is how many 'C' items matched
@@ -199,13 +194,26 @@ def compute_metrics(scored_df: pd.DataFrame, oth_turn_count: int) -> dict:
     # aoa_n makes the mean unreliable.
     correct_aoa = scored_df.loc[scored_df[_CLASSIFICATION_COLUMN] == "C", "aoa"].dropna()
 
+    # Semantic cluster/switch analysis (Troyer et al. 1997 / Zemla et al.
+    # 2020) over the ordered sequence of correct animal names -- see
+    # SFT_new/clustering.py.
+    correct_words_ordered = scored_df.loc[scored_df[_CLASSIFICATION_COLUMN] == "C", "word"].tolist()
+    cluster_metrics = compute_cluster_metrics(correct_words_ordered)
+
     return {
         "total_items": total,
-        "C": c, "R": r, "OTH": oth, "F": f,
+        "C": c, "R": r, "OTH": oth, "F": f, "N": n,
+        # Same definition as PFT_new's errors/error_rate (see its docstring):
+        # everything except correct responses and filled pauses (R + OTH + N
+        # here -- SFT has no PN/SIM codes).
+        "errors": r + oth + n,
+        "error_rate": round(100 * (r + oth + n) / total, 2),
         "R_rate": round(100 * r / total, 2),
         "OTH_rate": round(100 * oth / total, 2),
         "F_rate": round(100 * f / total, 2),
+        "N_rate": round(100 * n / total, 2),
         "mean_aoa_correct": float(correct_aoa.mean()) if len(correct_aoa) else None,
         "aoa_n": int(len(correct_aoa)),
+        **cluster_metrics,
         "oth_turn_count": oth_turn_count,
     }

@@ -9,7 +9,7 @@ os.chdir(project_root)
 from dementia_speech.io.textgrid import load_word_tier
 from dementia_speech.paths import DATA_DIR
 from dementia_speech.tasks.PFT_new.scoring import score_trial, compute_metrics
-from dementia_speech.tasks.PFT_new.features import compute_temporal_bins
+from dementia_speech.tasks.PFT_new.features import compute_temporal_bins, compute_latency_features
 
 TEXTGRID_DIR = DATA_DIR / "raw/textgrids/PFT"
 METADATA_PATH = DATA_DIR / "raw/meta-info.csv"
@@ -44,6 +44,7 @@ def main():
             scored_df = score_trial(df, target_letter=TARGET_LETTER)
             metrics = compute_metrics(scored_df)
             bins = compute_temporal_bins(scored_df)
+            latency = compute_latency_features(scored_df)
 
             match = metadata[metadata['IDs'].astype(str).str.contains(participant_id)]
             diagnosis = match.iloc[0]['diagnosis'] if len(match) > 0 else 'Unknown'
@@ -56,6 +57,7 @@ def main():
             metrics['participant_id'] = participant_id
             metrics['diagnosis'] = diagnosis
             metrics.update(bins)
+            metrics.update(latency)
             all_metrics.append(metrics)
 
         except Exception as e:
