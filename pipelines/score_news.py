@@ -58,11 +58,17 @@ def extract_participant_id(filename) -> str:
 
 
 def load_assessment_dates() -> dict[str, date]:
-    demographics = pd.read_csv(DEMOGRAPHICS_PATH)
+    # dtype=str on process_ID: otherwise pandas infers it as numeric and
+    # silently drops any leading zero, so EVERY lookup below misses against
+    # the (always-string) filename-derived participant_id -- confirmed on
+    # the HPC run, 2026-11-11, where this produced 100% 'no_date' rows. Same
+    # gotcha pipelines/score_fluency_discrepancy.py already guards against
+    # for its own participant_id column.
+    demographics = pd.read_csv(DEMOGRAPHICS_PATH, dtype={"process_ID": str})
     # zip, not itertuples: itertuples builds a namedtuple, which silently
     # renames any leading-underscore column (e.g. a '_date' column) to a
     # positional fallback name -- `row._date` then raises AttributeError
-    # (confirmed on the HPC run, 2026-11-11).
+    # (also confirmed on the HPC run).
     parsed = pd.to_datetime(demographics["assessment_date"], errors="coerce")
     valid = parsed.notna()
     return {
