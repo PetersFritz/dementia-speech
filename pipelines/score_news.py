@@ -59,9 +59,16 @@ def extract_participant_id(filename) -> str:
 
 def load_assessment_dates() -> dict[str, date]:
     demographics = pd.read_csv(DEMOGRAPHICS_PATH)
-    demographics["_date"] = pd.to_datetime(demographics["assessment_date"], errors="coerce")
-    valid = demographics.dropna(subset=["_date"])
-    return {row.process_ID: row._date.date() for row in valid.itertuples()}
+    # zip, not itertuples: itertuples builds a namedtuple, which silently
+    # renames any leading-underscore column (e.g. a '_date' column) to a
+    # positional fallback name -- `row._date` then raises AttributeError
+    # (confirmed on the HPC run, 2026-11-11).
+    parsed = pd.to_datetime(demographics["assessment_date"], errors="coerce")
+    valid = parsed.notna()
+    return {
+        pid: parsed_date.date()
+        for pid, parsed_date in zip(demographics.loc[valid, "process_ID"], parsed[valid])
+    }
 
 
 def main():
