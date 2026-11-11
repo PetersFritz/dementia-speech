@@ -53,8 +53,18 @@ AUDIT_LOG_PATH = DATA_DIR / "processed/news_scores_audit.jsonl"
 def extract_participant_id(filename) -> str:
     """<process_id>__STN.txt -> process_id (see extract_news_transcripts.py,
     which writes this exact filename from Process_demographics.csv's own
-    `process_ID` column -- the join key used below)."""
-    return filename.stem.split("__")[0]
+    `process_ID` column -- the join key used below).
+
+    process_ID itself routinely contains '__' (e.g. 'PROCESS-2_rec__001'),
+    so the full filename stem can have more than one '__'-separated part
+    ('PROCESS-2_rec__001__STN') -- confirmed on the HPC run, 2026-11-11,
+    where taking just stem.split('__')[0] truncated every process_ID to
+    'PROCESS-2_rec', causing a 100% assessment_date lookup miss. The task
+    code ('STN') is always the LAST '__'-separated segment, so process_id
+    is everything before that, joined back with '__', not just the first
+    segment.
+    """
+    return "__".join(filename.stem.split("__")[:-1])
 
 
 def load_assessment_dates() -> dict[str, date]:
