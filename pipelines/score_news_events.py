@@ -61,7 +61,8 @@ AUDIT_LOG_PATH = DATA_DIR / "processed/news_events_audit.jsonl"
 EVENT_COLUMNS = [
     "participant_id", "diagnosis", "assessment_date", "event_index",
     "description", "evidence_quote", "match_status", "n_matched_articles",
-    "matched_articles", "detail_level", "n_details", "details",
+    "best_article_headline", "best_article_date", "best_article_source",
+    "best_article_url", "matched_articles", "detail_level", "n_details", "details",
 ]
 
 
@@ -192,6 +193,12 @@ def main():
                     "evidence_quote": event.evidence_quote,
                     "match_status": status,
                     "n_matched_articles": len(articles),
+                    # The model lists matches best-first, so [0] is the article
+                    # this event most directly matches (blank if none).
+                    "best_article_headline": articles[0]["headline"] if articles else None,
+                    "best_article_date": articles[0]["date"] if articles else None,
+                    "best_article_source": articles[0]["source"] if articles else None,
+                    "best_article_url": articles[0].get("url") if articles else None,
                     "matched_articles": json.dumps(articles, default=str),
                     "detail_level": level,
                     "n_details": len(details),

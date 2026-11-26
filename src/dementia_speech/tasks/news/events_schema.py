@@ -69,7 +69,9 @@ class EventAssessment(BaseModel):
         default_factory=list,
         description=(
             "1-indexed positions, in the candidate list shown, of EVERY article "
-            "that reports this same event. Empty if none do -- never guess or "
+            "that reports this same event, ORDERED BEST MATCH FIRST (the first "
+            "is the article that most directly reports the event the "
+            "participant described). Empty if none do -- never guess or "
             "pick the closest-sounding article just to have an answer."
         ),
     )

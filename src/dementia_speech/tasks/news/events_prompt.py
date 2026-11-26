@@ -19,7 +19,7 @@ import pandas as pd
 from dementia_speech.tasks._shared.redaction import NAME_PLACEHOLDER, PLACE_PLACEHOLDER
 from dementia_speech.tasks.news.prompt import QUESTION_TEXT
 
-PROMPT_VERSION = "events-v1"
+PROMPT_VERSION = "events-v2"  # v2: matched articles ordered best match first
 
 _CLINICIAN_FRAMING = f"""You are an experienced clinician (a neuropsychologist) assessing people \
 for possible cognitive impairment. As part of the assessment, each participant was asked:
@@ -145,7 +145,10 @@ list of real news articles from the week before the interview. Decide two things
 that one event.
 
 1. matched_candidate_numbers: the numbers of EVERY article in the list that reports this \
-same real-world event (several outlets often cover the same story -- include all of them). \
+same real-world event (several outlets often cover the same story -- include all of them), \
+ORDERED BEST MATCH FIRST: put the article that most directly reports the event the participant \
+described first, then any other articles covering the same event. The first number is shown to \
+clinicians as "what the participant's answer matches", so choose it carefully. \
 Be strict: an article about a different event on a similar topic is NOT a match (a different \
 storm, a different tax announcement). If no article reports it, return an empty list -- the \
 participant may be describing something older than the past week, which does not match. Do NOT \

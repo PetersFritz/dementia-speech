@@ -58,9 +58,10 @@ def _assessment(numbers, level, details):
     )
 
 
-def test_out_of_range_and_duplicate_numbers_removed():
+def test_out_of_range_and_duplicate_numbers_removed_order_kept():
+    # The model's order (best match first) must survive: 2 stays ahead of 1.
     result = sanitize_assessment(_assessment([2, 2, 9, 0, 1], "none", []), TRANSCRIPT, 3)
-    assert result.matched_candidate_numbers == [1, 2]
+    assert result.matched_candidate_numbers == [2, 1]
 
 
 def test_no_grounded_details_forces_level_none():
@@ -77,17 +78,25 @@ def test_details_without_level_get_a_level():
 
 # ---- classify_event --------------------------------------------------------
 
-def test_recent_match_lists_all_articles_most_recent_first():
+def test_recent_match_lists_all_articles_in_model_order():
     status, articles = classify_event([1, 2], CANDIDATES, ASSESSMENT_DATE)
     assert status == "recent_match"
     assert [a["source"] for a in articles] == ["A", "B"]
     assert all(a["in_window"] for a in articles)
 
 
+def test_best_match_first_is_not_re_sorted_by_date():
+    # Candidate 2 (27 Oct) is older than candidate 1 (28 Oct), but the model
+    # ranked it best -- it must stay first.
+    _, articles = classify_event([2, 1], CANDIDATES, ASSESSMENT_DATE)
+    assert [a["source"] for a in articles] == ["B", "A"]
+
+
 def test_one_recent_article_is_enough():
     status, articles = classify_event([3, 1], CANDIDATES, ASSESSMENT_DATE)
     assert status == "recent_match"
-    assert [a["in_window"] for a in articles] == [True, False]
+    assert [a["source"] for a in articles] == ["C", "A"]
+    assert [a["in_window"] for a in articles] == [False, True]
 
 
 def test_only_old_article_is_not_a_recent_match():

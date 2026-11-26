@@ -38,7 +38,7 @@ def _level_from_detail_count(n: int) -> DetailLevel:
 
 
 def sanitize_assessment(result: EventAssessment, transcript: str, n_candidates: int) -> EventAssessment:
-    """Keep only real, de-duplicated candidate numbers and grounded details,
+    """Keep only real, de-duplicated candidate numbers (order preserved) and grounded details,
     then make detail_level consistent with the details that survived: with
     no grounded details the level can't be above "none", and with at least
     one it can't be "none" -- so the level the dashboard shows is always
@@ -46,7 +46,11 @@ def sanitize_assessment(result: EventAssessment, transcript: str, n_candidates: 
     if result.status != "extracted":
         return result
 
-    numbers = sorted({n for n in result.matched_candidate_numbers if 1 <= n <= n_candidates})
+    # Keep the model's order (best match first) -- drop invalid numbers and
+    # repeats, but never re-sort.
+    numbers = list(dict.fromkeys(
+        n for n in result.matched_candidate_numbers if 1 <= n <= n_candidates
+    ))
     details = [d for d in result.details if is_grounded(d, transcript)]
 
     level = result.detail_level

@@ -48,8 +48,10 @@ def classify_event(
     """(match_status, matched_articles) for one event.
 
     matched_articles is one dict per matched candidate (date/source/headline/
-    summary/url, plus `in_window`), most recent first -- the "which articles"
-    the dashboard lists. numbers must already be validated (events_verify).
+    summary/url, plus `in_window`), in the model's order -- BEST MATCH FIRST,
+    so matched_articles[0] is the article the dashboard shows as what the
+    participant's answer matches, with the rest as "also reported by". numbers
+    must already be validated (events_verify).
     A matched article outside the window (shouldn't happen, since candidates
     are only drawn from inside it) is still listed but doesn't make the event
     a recent match.
@@ -59,7 +61,6 @@ def classify_event(
         row = candidates.iloc[n - 1].to_dict()
         row["in_window"] = article_in_window(row["date"], assessment_date)
         articles.append(row)
-    articles.sort(key=lambda a: str(a["date"]), reverse=True)
 
     if not articles:
         return "no_match", []
