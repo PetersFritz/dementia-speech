@@ -60,6 +60,7 @@ for _m in _ALL_CT_MEASURES:
     CT_HEADLINE_Z[_m.key] = -_z if _m.higher_is_worse else _z
 
 _GROUPS = ["HC", "MCI", "Dementia"]
+_MEASURES_BY_KEY = {m.key: m for m in _ALL_CT_MEASURES}
 
 # Transcript and IU checklist scroll within this height so they line up with
 # the picture (GRAPH_FIGURE_HEIGHT) when shown side by side -- see
@@ -103,7 +104,13 @@ def _percentile_text(percentile: float | None) -> str:
     """
     if percentile is None:
         return "Percentile unavailable"
-    return f"{_ordinal(round(percentile))} percentile for age"
+    # The age-adjusted z-score (oriented: negative = impaired direction) is
+    # recovered from the percentile, which is just 100 * norm.cdf(z) -- so it
+    # needs no extra plumbing at any call site.
+    from scipy.stats import norm
+    z = float(norm.ppf(min(max(percentile, 0.01), 99.99) / 100))
+    z_str = f"{z:+.1f}".replace("-", "\u2212")
+    return f"{_ordinal(round(percentile))} percentile for age \u00b7 z = {z_str}"
 
 
 def _exploratory_card(measure, value, age, intercept, slope, residual_sd):
@@ -145,26 +152,42 @@ def _exploratory_card(measure, value, age, intercept, slope, residual_sd):
     )
 
 
-def _card_distribution_figure(metric_key, participant_z):
-    """Single-measure violin plot sized to sit inside a card (headline or
-    exploratory -- any metric_key present in CT_HEADLINE_Z works): each
-    group's age-adjusted z-score distribution shape (not a box summary),
-    a shaded reference band showing roughly where the HC group itself
-    clusters (z in [-1, 1] -- CT_HEADLINE_Z's z is already oriented so
-    negative always means the impaired direction), and this participant's
-    own z picked out with a dashed line -- purely descriptive, not a
-    Typical/Atypical judgement (see interpretation.py and
-    percentile_age_adjusted() for the card's own number). Same visual
-    language as the fluency tabs' _headline_distribution_figure (violin +
-    shaded reference range + dashed participant line) -- just one measure
-    per figure instead of a stacked panel, so it fits inside its own card.
+def _card_distribution_figure(metric_key, participant_value, participant_age):
+    """Single-measure violin plot sized to sit inside a card, in the
+    measure's RAW units (same number as the card's headline value, so the
+    participant's dashed line lines up with it): each group's raw
+    distribution (all participants in that group -- NOT age-adjusted), a
+    shaded band showing this participant's AGE-MATCHED HC reference range
+    (HC-predicted mean for their age +/- 1 residual SD -- the same range the
+    card prints as "HC reference"), and the participant's own raw value as
+    a labelled dashed line. The age-adjusted z-score/percentile is reported
+    in the card text itself (see _percentile_text), not on this plot --
+    purely descriptive, no Typical/Atypical judgement.
     """
+    measure = _MEASURES_BY_KEY[metric_key]
     fig = go.Figure()
 
-    fig.add_vrect(x0=-1, x1=1, fillcolor=GROUP_COLOURS["HC"], opacity=0.12, line_width=0)
+    all_vals = {
+        g: ct_metrics_df.loc[ct_metrics_df["diagnosis"] == g, metric_key].dropna().values
+        for g in _GROUPS
+    }
+
+    intercept, slope, residual_sd = HC_STATS.get(metric_key, (None, None, None))
+    has_band = (
+        participant_age is not None and pd.notna(participant_age)
+        and intercept is not None and slope is not None
+        and residual_sd is not None and pd.notna(residual_sd) and residual_sd > 0
+    )
+    if has_band:
+        predicted = intercept + slope * participant_age
+        lo, hi = predicted - residual_sd, predicted + residual_sd
+        # Same lower clip the card's printed range uses for non-negative measures.
+        if all(len(v) == 0 or v.min() >= 0 for v in all_vals.values()):
+            lo = max(0, lo)
+        fig.add_vrect(x0=lo, x1=hi, fillcolor=GROUP_COLOURS["HC"], opacity=0.12, line_width=0)
 
     for group in _GROUPS:
-        vals = CT_HEADLINE_Z.loc[CT_HEADLINE_Z["diagnosis"] == group, metric_key].dropna().values
+        vals = all_vals[group]
         if len(vals) < 2 or vals.std() == 0:
             continue
         fig.add_trace(go.Violin(
@@ -173,15 +196,16 @@ def _card_distribution_figure(metric_key, participant_z):
             opacity=0.35, meanline_visible=True,
             meanline=dict(color="#111", width=2),
             points=False, spanmode="hard", showlegend=False,
+            hoverinfo="skip",
         ))
     fig.update_yaxes(categoryorder="array", categoryarray=["Dementia", "MCI", "HC"])
 
-    if participant_z is not None and pd.notna(participant_z):
-        fig.add_vline(x=participant_z, line=dict(color="#1565C0", width=2, dash="dash"))
+    if participant_value is not None and pd.notna(participant_value):
+        fig.add_vline(x=participant_value, line=dict(color="#0D47A1", width=3, dash="dash"), annotation_text="Participant", annotation_position="top", annotation_font=dict(size=10, color="#0D47A1"))
 
-    fig.update_layout(height=150, margin=dict(t=6, b=24, l=6, r=6), plot_bgcolor="white")
+    fig.update_layout(height=166, margin=dict(t=22, b=24, l=6, r=6), plot_bgcolor="white")
     fig.update_xaxes(gridcolor="#eee", tickfont=dict(size=10),
-                     title=dict(text="age-adjusted z-score", font=dict(size=10)))
+                     title=dict(text=measure.label, font=dict(size=10)))
     fig.update_yaxes(gridcolor="#eee", tickfont=dict(size=10))
     return fig
 
@@ -229,12 +253,14 @@ def cookie_theft_ui():
                 ),
                 ui.p(
                     "Key features from the participant's picture description, "
-                    "each shown as a value, an age-adjusted percentile, and a "
-                    "group-comparison graph — no Typical/Borderline/Atypical "
-                    "label here, just where this score falls relative to the "
-                    "age-matched healthy-control group, for a clinician to "
-                    "weigh themselves (shaded band on each graph = HC typical "
-                    "range, z in [-1, 1]).",
+                    "each shown as a value, an age-adjusted percentile and "
+                    "z-score, and a group-comparison graph — no "
+                    "Typical/Borderline/Atypical label here, just where this "
+                    "score falls relative to age-matched healthy controls, "
+                    "for a clinician to weigh themselves. On each graph the "
+                    "violins show every group's raw values (not "
+                    "age-adjusted) and the shaded band is the healthy-control "
+                    "range for this participant's age.",
                     style="color:#6c757d;font-size:13px;margin-bottom:16px;"
                 ),
             ),
@@ -530,28 +556,28 @@ def cookie_theft_server(input, output, session, participant_id):
             return go.Figure()
         return render_graph_plotly(seq_full, iu_counts())
 
-    def _participant_z(metric_key):
-        """This participant's age-adjusted z-score on one headline measure
-        (see CT_HEADLINE_Z) -- shared by the three per-card graphs below.
-        """
-        pid = participant_id()
-        z_row = CT_HEADLINE_Z[CT_HEADLINE_Z["participant_id"].astype(str) == str(pid)]
-        return z_row.iloc[0][metric_key] if len(z_row) else None
+    def _participant_value(metric_key):
+        """This participant's raw value on one measure, shared by the
+        per-card graphs below."""
+        return metrics_row().get(metric_key)
+
+    def _participant_age():
+        return DEMOGRAPHICS.get(str(participant_id()), {}).get("age")
 
     # ── Per-card group-comparison graphs (one per headline measure) ──
     @render_widget
     def headline_graph_iu_score():
-        return _card_distribution_figure("iu_score", _participant_z("iu_score"))
+        return _card_distribution_figure("iu_score", _participant_value("iu_score"), _participant_age())
 
     @render_widget
     def headline_graph_total_words():
-        return _card_distribution_figure("total_words", _participant_z("total_words"))
+        return _card_distribution_figure("total_words", _participant_value("total_words"), _participant_age())
 
     @render_widget
     def headline_graph_path_distance_per_100_words():
         return _card_distribution_figure(
             "path_distance_per_100_words",
-            _participant_z("path_distance_per_100_words"),
+            _participant_value("path_distance_per_100_words"), _participant_age(),
         )
 
     # ── Exploratory measures: value + age-adjusted percentile + graph ──
@@ -579,51 +605,51 @@ def cookie_theft_server(input, output, session, participant_id):
     # same mechanics as the headline cards' graphs above.
     @render_widget
     def exploratory_graph_mattr():
-        return _card_distribution_figure("mattr", _participant_z("mattr"))
+        return _card_distribution_figure("mattr", _participant_value("mattr"), _participant_age())
 
     @render_widget
     def exploratory_graph_total_path_per_node():
-        return _card_distribution_figure("total_path_per_node", _participant_z("total_path_per_node"))
+        return _card_distribution_figure("total_path_per_node", _participant_value("total_path_per_node"), _participant_age())
 
     @render_widget
     def exploratory_graph_cross_ratio_quadrants():
         return _card_distribution_figure(
-            "cross_ratio_quadrants", _participant_z("cross_ratio_quadrants")
+            "cross_ratio_quadrants", _participant_value("cross_ratio_quadrants"), _participant_age()
         )
 
     # ── Same, for the 6 measures added 2026-11-17 (see interpretation.py) ──
     @render_widget
     def exploratory_graph_speech_duration_seconds():
         return _card_distribution_figure(
-            "speech_duration_seconds", _participant_z("speech_duration_seconds")
+            "speech_duration_seconds", _participant_value("speech_duration_seconds"), _participant_age()
         )
 
     @render_widget
     def exploratory_graph_repetition_rate_per_100_words():
         return _card_distribution_figure(
-            "repetition_rate_per_100_words", _participant_z("repetition_rate_per_100_words")
+            "repetition_rate_per_100_words", _participant_value("repetition_rate_per_100_words"), _participant_age()
         )
 
     @render_widget
     def exploratory_graph_noun_verb_ratio():
-        return _card_distribution_figure("noun_verb_ratio", _participant_z("noun_verb_ratio"))
+        return _card_distribution_figure("noun_verb_ratio", _participant_value("noun_verb_ratio"), _participant_age())
 
     @render_widget
     def exploratory_graph_syllables_per_content_unit():
         return _card_distribution_figure(
-            "syllables_per_content_unit", _participant_z("syllables_per_content_unit")
+            "syllables_per_content_unit", _participant_value("syllables_per_content_unit"), _participant_age()
         )
 
     @render_widget
     def exploratory_graph_left_right_cu_ratio():
         return _card_distribution_figure(
-            "left_right_cu_ratio", _participant_z("left_right_cu_ratio")
+            "left_right_cu_ratio", _participant_value("left_right_cu_ratio"), _participant_age()
         )
 
     @render_widget
     def exploratory_graph_content_units_per_minute():
         return _card_distribution_figure(
-            "content_units_per_minute", _participant_z("content_units_per_minute")
+            "content_units_per_minute", _participant_value("content_units_per_minute"), _participant_age()
         )
 
     # ── Transcript with IUs highlighted ──

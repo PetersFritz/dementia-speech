@@ -82,22 +82,45 @@ for _m in _ALL_STATS_MEASURES:
     PFT_HEADLINE_Z[_m.key] = -_z if _m.higher_is_worse else _z
 
 _GROUPS = ["HC", "MCI", "Dementia"]
+_MEASURES_BY_KEY = {m.key: m for m in _ALL_STATS_MEASURES}
 
 
-def _card_distribution_figure(metric_key, participant_z):
-    """Single-measure violin plot sized to sit inside a card -- same visual
-    language as cookie_theft.py's own _card_distribution_figure (violin per
-    group in age-adjusted z-score units, HC "typical" band shaded at z in
-    [-1, 1], this participant's own z picked out with a dashed line): each
-    measure card embeds this directly rather than every measure living in
-    one tall stacked panel (user request, to match Cookie Theft's layout).
+def _card_distribution_figure(metric_key, participant_value, participant_age):
+    """Single-measure violin plot sized to sit inside a card, in the
+    measure's RAW units (same number as the card's headline value, so the
+    participant's dashed line lines up with it): each group's raw
+    distribution (all participants in that group -- NOT age-adjusted), a
+    shaded band showing this participant's AGE-MATCHED HC reference range
+    (HC-predicted mean for their age +/- 1 residual SD -- the same range the
+    card prints as "HC reference"), and the participant's own raw value as
+    a labelled dashed line. The age-adjusted z-score/percentile is reported
+    in the card text itself (see _percentile_text), not on this plot --
+    purely descriptive, no Typical/Atypical judgement.
     """
+    measure = _MEASURES_BY_KEY[metric_key]
     fig = go.Figure()
 
-    fig.add_vrect(x0=-1, x1=1, fillcolor=GROUP_COLOURS["HC"], opacity=0.12, line_width=0)
+    all_vals = {
+        g: pft_metrics_df.loc[pft_metrics_df["diagnosis"] == g, metric_key].dropna().values
+        for g in _GROUPS
+    }
+
+    intercept, slope, residual_sd = HC_STATS.get(metric_key, (None, None, None))
+    has_band = (
+        participant_age is not None and pd.notna(participant_age)
+        and intercept is not None and slope is not None
+        and residual_sd is not None and pd.notna(residual_sd) and residual_sd > 0
+    )
+    if has_band:
+        predicted = intercept + slope * participant_age
+        lo, hi = predicted - residual_sd, predicted + residual_sd
+        # Same lower clip the card's printed range uses for non-negative measures.
+        if all(len(v) == 0 or v.min() >= 0 for v in all_vals.values()):
+            lo = max(0, lo)
+        fig.add_vrect(x0=lo, x1=hi, fillcolor=GROUP_COLOURS["HC"], opacity=0.12, line_width=0)
 
     for group in _GROUPS:
-        vals = PFT_HEADLINE_Z.loc[PFT_HEADLINE_Z["diagnosis"] == group, metric_key].dropna().values
+        vals = all_vals[group]
         if len(vals) < 2 or vals.std() == 0:
             continue
         fig.add_trace(go.Violin(
@@ -106,15 +129,16 @@ def _card_distribution_figure(metric_key, participant_z):
             opacity=0.35, meanline_visible=True,
             meanline=dict(color="#111", width=2),
             points=False, spanmode="hard", showlegend=False,
+            hoverinfo="skip",
         ))
     fig.update_yaxes(categoryorder="array", categoryarray=["Dementia", "MCI", "HC"])
 
-    if participant_z is not None and pd.notna(participant_z):
-        fig.add_vline(x=participant_z, line=dict(color="#1565C0", width=2, dash="dash"))
+    if participant_value is not None and pd.notna(participant_value):
+        fig.add_vline(x=participant_value, line=dict(color="#0D47A1", width=3, dash="dash"), annotation_text="Participant", annotation_position="top", annotation_font=dict(size=10, color="#0D47A1"))
 
-    fig.update_layout(height=150, margin=dict(t=6, b=24, l=6, r=6), plot_bgcolor="white")
+    fig.update_layout(height=166, margin=dict(t=22, b=24, l=6, r=6), plot_bgcolor="white")
     fig.update_xaxes(gridcolor="#eee", tickfont=dict(size=10),
-                     title=dict(text="age-adjusted z-score", font=dict(size=10)))
+                     title=dict(text=measure.label, font=dict(size=10)))
     fig.update_yaxes(gridcolor="#eee", tickfont=dict(size=10))
     return fig
 
@@ -155,7 +179,13 @@ def _percentile_text(percentile: float | None) -> str:
     own higher/lower-is-worse convention (see percentile_age_adjusted())."""
     if percentile is None:
         return "Percentile unavailable"
-    return f"{_ordinal(round(percentile))} percentile for age"
+    # The age-adjusted z-score (oriented: negative = impaired direction) is
+    # recovered from the percentile, which is just 100 * norm.cdf(z) -- so it
+    # needs no extra plumbing at any call site.
+    from scipy.stats import norm
+    z = float(norm.ppf(min(max(percentile, 0.01), 99.99) / 100))
+    z_str = f"{z:+.1f}".replace("-", "\u2212")
+    return f"{_ordinal(round(percentile))} percentile for age \u00b7 z = {z_str}"
 
 
 def _measure_card(measure, value, age, intercept, slope, residual_sd):
@@ -223,13 +253,15 @@ _SECTION_CAPTION_STYLE = "color:#6c757d;font-size:13px;margin-bottom:16px;"
 # transcript is, so the two fluency tasks' columns stay horizontally
 # aligned block-for-block (user request, 2026-11-17).
 _TRANSCRIPT_SCROLL_HEIGHT = "360px"
-# Fixed height on the bin-plot block (user request, 2026-11-17: bin plot
-# directly under Transcript, then Additional measures). SFT has no
-# word-level timing and so no equivalent block -- semantic_fluency.py gives
-# its own column a placeholder of this same height in the same position so
-# "Additional language analysis" still starts at the same height in both
-# columns; see that file's comment.
-_BIN_PLOT_BLOCK_HEIGHT = "460px"
+# Fixed height on the bin-plot block (user request, 2026-11-17: directly
+# under Transcript, then Additional measures; shortened, user request
+# 2026-11-15). SFT has no word-level timing and so no equivalent block --
+# semantic_fluency.py gives its own column a same-height row in the same
+# position (placeholder + the letter-vs-category discrepancy score, which
+# lives on that side -- see that file's comment) so "Additional language
+# analysis" still starts at the same height in both columns.
+_BIN_PLOT_BLOCK_HEIGHT = "300px"
+_BIN_PLOT_FIGURE_HEIGHT = 190
 
 
 @module.ui
@@ -267,7 +299,7 @@ def phonemic_fluency_detail_ui():
                 _classification_legend(["C", "OTH", "N", "PN", "R", "SIM", "F"]),
                 ui.div(
                     ui.output_ui("word_display"),
-                    style=f"max-height:{_TRANSCRIPT_SCROLL_HEIGHT};overflow-y:auto;",
+                    style=f"height:{_TRANSCRIPT_SCROLL_HEIGHT};overflow-y:auto;",
                 ),
                 style=_PANEL_STYLE,
             ),
@@ -284,7 +316,7 @@ def phonemic_fluency_detail_ui():
                 style="color:#6c757d;font-size:12px;margin:2px 0 8px;",
             ),
             output_widget("bin_plot"),
-            style=_PANEL_STYLE + f"min-height:{_BIN_PLOT_BLOCK_HEIGHT};margin-bottom:26px;",
+            style=_PANEL_STYLE + f"height:{_BIN_PLOT_BLOCK_HEIGHT};overflow:hidden;margin-bottom:26px;",
         ),
 
         ui.div(
@@ -314,6 +346,9 @@ def phonemic_fluency_detail_ui():
                 style=_PANEL_STYLE,
             ),
         ),
+        # display:contents so the three sections above are direct rows of
+        # fluency_tab.py's shared grid (keeps PFT/SFT blocks aligned).
+        style="display:contents;",
     )
 
 
@@ -351,25 +386,23 @@ def phonemic_fluency_server(input, output, session, participant_id):
         ]
         return ui.div(*cards, style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;")
 
-    def _participant_z(metric_key):
-        """This participant's age-adjusted z-score on one measure (see
-        PFT_HEADLINE_Z) -- shared by each card's embedded graph below."""
-        pid = participant_id()
-        z_row = PFT_HEADLINE_Z[PFT_HEADLINE_Z["participant_id"].astype(str) == str(pid)]
-        return z_row.iloc[0][metric_key] if len(z_row) else None
+    def _participant_value(metric_key):
+        """This participant's raw value on one measure -- shared by each
+        card's embedded graph below."""
+        return pmetrics().get(metric_key)
 
     # ── Per-card group-comparison graphs (one per measure shown as a card) ──
     @render_widget
     def headline_graph_C():
-        return _card_distribution_figure("C", _participant_z("C"))
+        return _card_distribution_figure("C", _participant_value("C"), _participant_age())
 
     @render_widget
     def headline_graph_total_words():
-        return _card_distribution_figure("total_words", _participant_z("total_words"))
+        return _card_distribution_figure("total_words", _participant_value("total_words"), _participant_age())
 
     @render_widget
     def headline_graph_OTH_rate():
-        return _card_distribution_figure("OTH_rate", _participant_z("OTH_rate"))
+        return _card_distribution_figure("OTH_rate", _participant_value("OTH_rate"), _participant_age())
 
     # ── Additional measures: context + error-exploratory + exploratory,
     # all together in one panel (matches Cookie Theft's single "Additional
@@ -392,35 +425,35 @@ def phonemic_fluency_server(input, output, session, participant_id):
 
     @render_widget
     def headline_graph_error_rate():
-        return _card_distribution_figure("error_rate", _participant_z("error_rate"))
+        return _card_distribution_figure("error_rate", _participant_value("error_rate"), _participant_age())
 
     @render_widget
     def headline_graph_N_rate():
-        return _card_distribution_figure("N_rate", _participant_z("N_rate"))
+        return _card_distribution_figure("N_rate", _participant_value("N_rate"), _participant_age())
 
     @render_widget
     def headline_graph_PN_rate():
-        return _card_distribution_figure("PN_rate", _participant_z("PN_rate"))
+        return _card_distribution_figure("PN_rate", _participant_value("PN_rate"), _participant_age())
 
     @render_widget
     def headline_graph_R_rate():
-        return _card_distribution_figure("R_rate", _participant_z("R_rate"))
+        return _card_distribution_figure("R_rate", _participant_value("R_rate"), _participant_age())
 
     @render_widget
     def headline_graph_SIM_rate():
-        return _card_distribution_figure("SIM_rate", _participant_z("SIM_rate"))
+        return _card_distribution_figure("SIM_rate", _participant_value("SIM_rate"), _participant_age())
 
     @render_widget
     def headline_graph_F_rate():
-        return _card_distribution_figure("F_rate", _participant_z("F_rate"))
+        return _card_distribution_figure("F_rate", _participant_value("F_rate"), _participant_age())
 
     @render_widget
     def headline_graph_time_to_first_correct():
-        return _card_distribution_figure("time_to_first_correct", _participant_z("time_to_first_correct"))
+        return _card_distribution_figure("time_to_first_correct", _participant_value("time_to_first_correct"), _participant_age())
 
     @render_widget
     def headline_graph_mean_aoa_correct():
-        return _card_distribution_figure("mean_aoa_correct", _participant_z("mean_aoa_correct"))
+        return _card_distribution_figure("mean_aoa_correct", _participant_value("mean_aoa_correct"), _participant_age())
 
     @render.ui
     def word_display():
@@ -461,12 +494,15 @@ def phonemic_fluency_server(input, output, session, participant_id):
             ))
         fig.add_trace(go.Scatter(
             x=bin_labels, y=[m.get(b, 0) for b in bins],
-            mode="lines+markers", name=f"Participant {participant_id()}",
+            mode="lines+markers", name="Participant",
             line=dict(color="#1565C0", width=3), marker=dict(size=9),
         ))
-        fig.update_layout(height=320, margin=dict(t=10, b=10, l=10, r=10),
+        # Legend sits ABOVE the plot (not below): underneath, it collided
+        # with the x-axis title in this fixed-height block.
+        fig.update_layout(height=_BIN_PLOT_FIGURE_HEIGHT, margin=dict(t=30, b=10, l=10, r=10),
                           plot_bgcolor="white",
-                          xaxis=dict(title="Time bin", gridcolor="#eee"),
+                          xaxis=dict(title="Time bin", gridcolor="#eee", automargin=True),
                           yaxis=dict(title="Correct words", gridcolor="#eee", rangemode="tozero"),
-                          legend=dict(orientation="h", y=-0.2))
+                          legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                                      xanchor="left", x=0))
         return fig

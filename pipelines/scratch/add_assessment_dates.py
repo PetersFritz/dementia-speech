@@ -3,8 +3,14 @@
 Joins `CognoSpeak_metadata__2026_06_07.csv` (column `dir_name`, matched against
 `Process_demographics.csv`'s `best_match_id`) onto Process_demographics.csv, pulling in that
 file's `asses_date` column as a new `assessment_date` column (ISO `YYYY-MM-DD`). Only rows whose
-`best_match_id` has a match in the metadata file get a date -- old-CognoSpeak participants have
-no `dir_name` to match against and are expected to stay blank.
+`best_match_id` has a match in the metadata file get a date this way -- old-CognoSpeak
+participants have no `dir_name` to match against, and are expected to need a date entered by hand
+directly in Process_demographics.csv instead.
+
+Additive: an `assessment_date` that's already in Process_demographics.csv (e.g. a hand-entered one
+for an old-CognoSpeak participant) is kept, not overwritten, by a re-run of this script -- only
+blank rows get filled from the metadata join. A row where the two actually disagree is reported,
+not silently resolved either way.
 
 Writes Process_demographics.csv.bak (one-time backup of the pre-join file, never overwritten if
 it already exists) before overwriting Process_demographics.csv in place. Pure CSV join, no
@@ -68,7 +74,28 @@ def main():
             raise SystemExit(f"{col!r} not found in {path}. Available columns: {metadata.columns.tolist()}")
 
     date_map = build_date_map(metadata)
-    demographics[NEW_COLUMN] = demographics[MATCH_COLUMN].map(date_map)
+    mapped = demographics[MATCH_COLUMN].map(date_map)
+
+    # Additive, not a blind overwrite: an existing assessment_date (e.g. one
+    # entered by hand for an old-CognoSpeak participant with no dir_name
+    # match) is kept rather than replaced, so re-running this script can't
+    # silently wipe a manual entry -- confirmed happening in practice,
+    # 2026-11-15. A row whose freshly-matched date actually disagrees with
+    # what's already there is flagged instead of silently resolved, since
+    # that's a real discrepancy worth a human look rather than a rerun
+    # loading dates for the first time.
+    if NEW_COLUMN in demographics.columns:
+        existing = demographics[NEW_COLUMN]
+        conflicts = existing.notna() & mapped.notna() & (existing.astype(str) != mapped.astype(str))
+        if conflicts.any():
+            print(f"  WARNING: {conflicts.sum()} rows already have an assessment_date that "
+                  f"disagrees with the freshly-matched one -- keeping the EXISTING value for these "
+                  f"{MATCH_COLUMN} values (check by hand if this is unexpected):")
+            for match_id in demographics.loc[conflicts, MATCH_COLUMN].unique():
+                print(f"    {match_id!r}")
+        demographics[NEW_COLUMN] = existing.where(existing.notna(), mapped)
+    else:
+        demographics[NEW_COLUMN] = mapped
 
     matched = demographics[NEW_COLUMN].notna().sum()
     unmatched = len(demographics) - matched

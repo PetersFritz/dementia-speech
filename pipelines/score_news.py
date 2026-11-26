@@ -123,6 +123,7 @@ def main():
                     "matched_event_source": None, "summary": None, "evidence_quotes": None,
                     "word_count": word_count, "detail_count": None,
                     "best_claim_detail_count": None, "detail_rate_per_100_words": None,
+                    "best_claim_details": None,
                 })
                 continue
 
@@ -159,6 +160,12 @@ def main():
                 "matched_event_source": best_event.get("source"),
                 "summary": result.summary,
                 "evidence_quotes": " | ".join(c.evidence_quote for c in result.claims if c.evidence_quote),
+                # The concrete details (verbatim, grounded) on the claim that
+                # decided the category -- shown in the dashboard's news card
+                # so a reader can see the substance, not just the count.
+                "best_claim_details": (
+                    " | ".join(best_claim.details) if best_claim is not None and best_claim.details else None
+                ),
                 "word_count": word_count,
                 **detail_metrics,
             })

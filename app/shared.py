@@ -196,6 +196,58 @@ WHO_CONCERNED_COLOURS = {
     "unclear": "#9e9e9e",
 }
 
+# ── Recent news (Q "what's been in the news" LLM extraction + date scoring) ──
+# participant_id in this CSV is the FULL compound id (score_news.py's own
+# extract_participant_id doesn't reduce it to a bare numeric the way every
+# other task's extraction script does -- it needs the whole thing to look up
+# assessment_date) -- e.g. "PROCESS-2_rec__001", not "1". Normalised here to
+# match every other *_BY_PARTICIPANT dict's bare-numeric key, the same
+# "take the trailing numeric segment, strip zero-padding via int()"
+# normalisation _index_ctd_transcripts above already does for a differently
+# -shaped filename id.
+_news_df = pd.read_csv(DATA_DIR / "news_scores.csv")
+
+
+def _normalize_news_participant_id(raw_id):
+    parts = str(raw_id).split("__")
+    raw_numeric = parts[-1] if len(parts) >= 2 else parts[0]
+    try:
+        return str(int(raw_numeric))
+    except ValueError:
+        return raw_numeric
+
+
+_news_df["participant_id"] = _news_df["participant_id"].apply(_normalize_news_participant_id)
+
+NEWS_BY_PARTICIPANT = {
+    pid: row.to_dict()
+    for pid, row in _news_df.set_index("participant_id").iterrows()
+}
+# Whole-cohort frame (diagnosis + score + category for every participant),
+# for the Overview news card's group-comparison graph -- same need as
+# FLUENCY_DISCREPANCY_DF/PFT_HEADLINE_Z/etc.
+NEWS_DF = _news_df
+
+# category/score meaning, see dementia_speech.tasks.news.scoring's module
+# docstring -- score is None (not 0) for unverifiable/no_date, since those
+# are a gap in the measure, not evidence of a wrong answer.
+NEWS_CATEGORY_LABELS = {
+    "in_window_match": "Recent event, correctly recalled",
+    "outdated":         "Real event matched, but outdated",
+    "vague":            "Too vague to verify",
+    "none_or_wrong":    "No real answer",
+    "unverifiable":     "Specific answer, event not found in cache",
+    "no_date":          "No assessment date on record",
+}
+NEWS_CATEGORY_COLOURS = {
+    "in_window_match": "#1D9E75",
+    "outdated":         "#BA7517",
+    "vague":            "#BA7517",
+    "none_or_wrong":    "#D85A30",
+    "unverifiable":     "#9e9e9e",
+    "no_date":          "#9e9e9e",
+}
+
 # ── Fluency discrepancy (letter z-score minus category z-score) ──────────────
 # Experimental: single trial per task (vs. three summed in Wright et al. 2022)
 # and calibrated against this project's own TRAIN-split HC group, not the

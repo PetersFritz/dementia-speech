@@ -13,6 +13,7 @@ from shinywidgets import output_widget, render_widget
 from shared import (
     sft_words_df, sft_metrics_df, SPLIT, DEMOGRAPHICS,
     CLASSIFICATION_COLOURS, CLASSIFICATION_LABELS, GROUP_COLOURS,
+    FLUENCY_DISCREPANCY_BY_PARTICIPANT, FLUENCY_DISCREPANCY_DF,
 )
 from dementia_speech.tasks.SFT_new.interpretation import (
     HEADLINE_MEASURES, CONTEXT_MEASURES, ERROR_HEADLINE_MEASURES,
@@ -80,23 +81,25 @@ for _m in _ALL_STATS_MEASURES:
     SFT_HEADLINE_Z[_m.key] = -_z if _m.higher_is_worse else _z
 
 _GROUPS = ["HC", "MCI", "Dementia"]
+_MEASURES_BY_KEY = {m.key: m for m in _ALL_STATS_MEASURES}
+_DISCREPANCY_FIGURE_HEIGHT = 136
 
 
-def _card_distribution_figure(metric_key, participant_z):
-    """Single-measure violin plot sized to sit inside a card -- same visual
-    language as cookie_theft.py's/phonemic_fluency.py's own
-    _card_distribution_figure (violin per group in age-adjusted z-score
-    units, HC "typical" band shaded at z in [-1, 1], this participant's own
-    z picked out with a dashed line): each measure card embeds this
-    directly rather than every measure living in one tall stacked panel
-    (user request, to match Cookie Theft's layout).
-    """
+def _discrepancy_distribution_figure(participant_value):
+    """Per-group violin of discrepancy_score (z_letter - z_category) plus
+    this participant's own value as a dashed line -- lives on the SFT side
+    (user request, 2026-11-15: this is a letter-vs-category COMPARISON, as
+    relevant to this task as to PFT, and fills what would otherwise be dead
+    space next to the "no bin plot" placeholder) -- same visual language as
+    every other measure card's embedded graph (see _card_distribution_figure
+    above), but with no shaded "typical" band: that convention bands
+    against an age-adjusted norm fit for the one measure being shown, which
+    hasn't been done for this derived, explicitly experimental score."""
     fig = go.Figure()
-
-    fig.add_vrect(x0=-1, x1=1, fillcolor=GROUP_COLOURS["HC"], opacity=0.12, line_width=0)
-
     for group in _GROUPS:
-        vals = SFT_HEADLINE_Z.loc[SFT_HEADLINE_Z["diagnosis"] == group, metric_key].dropna().values
+        vals = FLUENCY_DISCREPANCY_DF.loc[
+            FLUENCY_DISCREPANCY_DF["diagnosis"] == group, "discrepancy_score"
+        ].dropna().values
         if len(vals) < 2 or vals.std() == 0:
             continue
         fig.add_trace(go.Violin(
@@ -105,15 +108,74 @@ def _card_distribution_figure(metric_key, participant_z):
             opacity=0.35, meanline_visible=True,
             meanline=dict(color="#111", width=2),
             points=False, spanmode="hard", showlegend=False,
+            hoverinfo="skip",
         ))
     fig.update_yaxes(categoryorder="array", categoryarray=["Dementia", "MCI", "HC"])
 
-    if participant_z is not None and pd.notna(participant_z):
-        fig.add_vline(x=participant_z, line=dict(color="#1565C0", width=2, dash="dash"))
+    if participant_value is not None and participant_value == participant_value:
+        fig.add_vline(x=participant_value, line=dict(color="#0D47A1", width=3, dash="dash"), annotation_text="Participant", annotation_position="top", annotation_font=dict(size=10, color="#0D47A1"))
 
-    fig.update_layout(height=150, margin=dict(t=6, b=24, l=6, r=6), plot_bgcolor="white")
+    fig.update_layout(height=_DISCREPANCY_FIGURE_HEIGHT, margin=dict(t=22, b=24, l=6, r=6), plot_bgcolor="white")
     fig.update_xaxes(gridcolor="#eee", tickfont=dict(size=10),
-                     title=dict(text="age-adjusted z-score", font=dict(size=10)))
+                     title=dict(text="discrepancy score (z_letter − z_category)", font=dict(size=10)))
+    fig.update_yaxes(gridcolor="#eee", tickfont=dict(size=10))
+    return fig
+
+
+def _card_distribution_figure(metric_key, participant_value, participant_age):
+    """Single-measure violin plot sized to sit inside a card, in the
+    measure's RAW units (same number as the card's headline value, so the
+    participant's dashed line lines up with it): each group's raw
+    distribution (all participants in that group -- NOT age-adjusted), a
+    shaded band showing this participant's AGE-MATCHED HC reference range
+    (HC-predicted mean for their age +/- 1 residual SD -- the same range the
+    card prints as "HC reference"), and the participant's own raw value as
+    a labelled dashed line. The age-adjusted z-score/percentile is reported
+    in the card text itself (see _percentile_text), not on this plot --
+    purely descriptive, no Typical/Atypical judgement.
+    """
+    measure = _MEASURES_BY_KEY[metric_key]
+    fig = go.Figure()
+
+    all_vals = {
+        g: sft_metrics_df.loc[sft_metrics_df["diagnosis"] == g, metric_key].dropna().values
+        for g in _GROUPS
+    }
+
+    intercept, slope, residual_sd = HC_STATS.get(metric_key, (None, None, None))
+    has_band = (
+        participant_age is not None and pd.notna(participant_age)
+        and intercept is not None and slope is not None
+        and residual_sd is not None and pd.notna(residual_sd) and residual_sd > 0
+    )
+    if has_band:
+        predicted = intercept + slope * participant_age
+        lo, hi = predicted - residual_sd, predicted + residual_sd
+        # Same lower clip the card's printed range uses for non-negative measures.
+        if all(len(v) == 0 or v.min() >= 0 for v in all_vals.values()):
+            lo = max(0, lo)
+        fig.add_vrect(x0=lo, x1=hi, fillcolor=GROUP_COLOURS["HC"], opacity=0.12, line_width=0)
+
+    for group in _GROUPS:
+        vals = all_vals[group]
+        if len(vals) < 2 or vals.std() == 0:
+            continue
+        fig.add_trace(go.Violin(
+            x=vals, y=[group] * len(vals), orientation="h", name=group,
+            line_color=GROUP_COLOURS[group], fillcolor=GROUP_COLOURS[group],
+            opacity=0.35, meanline_visible=True,
+            meanline=dict(color="#111", width=2),
+            points=False, spanmode="hard", showlegend=False,
+            hoverinfo="skip",
+        ))
+    fig.update_yaxes(categoryorder="array", categoryarray=["Dementia", "MCI", "HC"])
+
+    if participant_value is not None and pd.notna(participant_value):
+        fig.add_vline(x=participant_value, line=dict(color="#0D47A1", width=3, dash="dash"), annotation_text="Participant", annotation_position="top", annotation_font=dict(size=10, color="#0D47A1"))
+
+    fig.update_layout(height=166, margin=dict(t=22, b=24, l=6, r=6), plot_bgcolor="white")
+    fig.update_xaxes(gridcolor="#eee", tickfont=dict(size=10),
+                     title=dict(text=measure.label, font=dict(size=10)))
     fig.update_yaxes(gridcolor="#eee", tickfont=dict(size=10))
     return fig
 
@@ -154,7 +216,13 @@ def _percentile_text(percentile: float | None) -> str:
     own higher/lower-is-worse convention (see percentile_age_adjusted())."""
     if percentile is None:
         return "Percentile unavailable"
-    return f"{_ordinal(round(percentile))} percentile for age"
+    # The age-adjusted z-score (oriented: negative = impaired direction) is
+    # recovered from the percentile, which is just 100 * norm.cdf(z) -- so it
+    # needs no extra plumbing at any call site.
+    from scipy.stats import norm
+    z = float(norm.ppf(min(max(percentile, 0.01), 99.99) / 100))
+    z_str = f"{z:+.1f}".replace("-", "\u2212")
+    return f"{_ordinal(round(percentile))} percentile for age \u00b7 z = {z_str}"
 
 
 def _measure_card(measure, value, age, intercept, slope, residual_sd):
@@ -216,11 +284,12 @@ _SECTION_CAPTION_STYLE = "color:#6c757d;font-size:13px;margin-bottom:16px;"
 # panel (see that file's comment) -- keeps both tasks' columns horizontally
 # aligned block-for-block regardless of per-participant transcript length.
 _TRANSCRIPT_SCROLL_HEIGHT = "360px"
-# Same height as phonemic_fluency.py's bin-plot block, so the placeholder
-# below (SFT has no word-level timing, so no bin plot of its own) keeps
-# "Additional language analysis" starting at the same height in both
-# columns (user request, 2026-11-17).
-_BIN_PLOT_BLOCK_HEIGHT = "460px"
+# Same height as phonemic_fluency.py's bin-plot block, so this column's own
+# row (placeholder + discrepancy score, see below) keeps "Additional
+# language analysis" starting at the same height in both columns (user
+# request, 2026-11-17; row shortened and discrepancy score moved into this
+# row 2026-11-15).
+_BIN_PLOT_BLOCK_HEIGHT = "300px"
 
 
 @module.ui
@@ -246,17 +315,20 @@ def semantic_fluency_detail_ui():
     return ui.div(
         ui.div(
             ui.h5("Transcript", style=_SECTION_HEADER_STYLE),
-            ui.p(
-                "Every item produced, colour-coded by classification below. "
-                "Hover an item for its exact type.",
-                style=_SECTION_CAPTION_STYLE,
-            ),
-            _classification_legend(["C", "OTH", "N", "R", "F"]),
+            # Caption + legend live INSIDE the panel, same as
+            # phonemic_fluency.py, so both tasks' transcript panels have
+            # identical structure and line up.
             ui.div(
+                ui.p(
+                    "Every item produced, colour-coded by classification below. "
+                    "Hover an item for its exact type.",
+                    style=_SECTION_CAPTION_STYLE,
+                ),
+                _classification_legend(["C", "OTH", "N", "R", "F"]),
                 ui.output_ui("assistance_note"),
                 ui.div(
                     ui.output_ui("word_display"),
-                    style=f"max-height:{_TRANSCRIPT_SCROLL_HEIGHT};overflow-y:auto;",
+                    style=f"height:{_TRANSCRIPT_SCROLL_HEIGHT};overflow-y:auto;",
                 ),
                 style=_PANEL_STYLE,
             ),
@@ -264,18 +336,8 @@ def semantic_fluency_detail_ui():
         ),
 
         ui.div(
-            ui.div(
-                "No word-level timing data for this task (manually "
-                "transcribed free text, not an aligned recording) — so "
-                "there's no equivalent of phonemic fluency's 15-second-bin "
-                "plot here. See docs/sft_scoring.md, \"Not yet implemented\".",
-                style="color:#8a96a3;font-size:12px;text-align:center;max-width:26em;",
-            ),
-            style=(
-                "display:flex;align-items:center;justify-content:center;"
-                "background:#fafbfc;border:1px dashed #d5dde5;border-radius:12px;"
-                f"min-height:{_BIN_PLOT_BLOCK_HEIGHT};margin-bottom:26px;padding:22px;"
-            ),
+            ui.output_ui("discrepancy_card"),
+            style="margin-bottom:26px;",
         ),
 
         ui.div(
@@ -305,6 +367,9 @@ def semantic_fluency_detail_ui():
                 style=_PANEL_STYLE,
             ),
         ),
+        # display:contents so the three sections above are direct rows of
+        # fluency_tab.py's shared grid (keeps PFT/SFT blocks aligned).
+        style="display:contents;",
     )
 
 
@@ -342,25 +407,23 @@ def semantic_fluency_server(input, output, session, participant_id):
         ]
         return ui.div(*cards, style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;")
 
-    def _participant_z(metric_key):
-        """This participant's age-adjusted z-score on one measure (see
-        SFT_HEADLINE_Z) -- shared by each card's embedded graph below."""
-        pid = participant_id()
-        z_row = SFT_HEADLINE_Z[SFT_HEADLINE_Z["participant_id"].astype(str) == str(pid)]
-        return z_row.iloc[0][metric_key] if len(z_row) else None
+    def _participant_value(metric_key):
+        """This participant's raw value on one measure -- shared by each
+        card's embedded graph below."""
+        return pmetrics().get(metric_key)
 
     # ── Per-card group-comparison graphs (one per measure shown as a card) ──
     @render_widget
     def headline_graph_C():
-        return _card_distribution_figure("C", _participant_z("C"))
+        return _card_distribution_figure("C", _participant_value("C"), _participant_age())
 
     @render_widget
     def headline_graph_total_items():
-        return _card_distribution_figure("total_items", _participant_z("total_items"))
+        return _card_distribution_figure("total_items", _participant_value("total_items"), _participant_age())
 
     @render_widget
     def headline_graph_R_rate():
-        return _card_distribution_figure("R_rate", _participant_z("R_rate"))
+        return _card_distribution_figure("R_rate", _participant_value("R_rate"), _participant_age())
 
     # ── Additional measures: context + error-exploratory + exploratory,
     # all together in one panel (matches Cookie Theft's single "Additional
@@ -383,23 +446,23 @@ def semantic_fluency_server(input, output, session, participant_id):
 
     @render_widget
     def headline_graph_error_rate():
-        return _card_distribution_figure("error_rate", _participant_z("error_rate"))
+        return _card_distribution_figure("error_rate", _participant_value("error_rate"), _participant_age())
 
     @render_widget
     def headline_graph_OTH_rate():
-        return _card_distribution_figure("OTH_rate", _participant_z("OTH_rate"))
+        return _card_distribution_figure("OTH_rate", _participant_value("OTH_rate"), _participant_age())
 
     @render_widget
     def headline_graph_N_rate():
-        return _card_distribution_figure("N_rate", _participant_z("N_rate"))
+        return _card_distribution_figure("N_rate", _participant_value("N_rate"), _participant_age())
 
     @render_widget
     def headline_graph_F_rate():
-        return _card_distribution_figure("F_rate", _participant_z("F_rate"))
+        return _card_distribution_figure("F_rate", _participant_value("F_rate"), _participant_age())
 
     @render_widget
     def headline_graph_mean_aoa_correct():
-        return _card_distribution_figure("mean_aoa_correct", _participant_z("mean_aoa_correct"))
+        return _card_distribution_figure("mean_aoa_correct", _participant_value("mean_aoa_correct"), _participant_age())
 
     @render.ui
     def assistance_note():
@@ -416,6 +479,53 @@ def semantic_fluency_server(input, output, session, participant_id):
                 "padding:8px 12px;color:#7a5c00;font-size:0.85em;margin-bottom:8px;"
             ),
         )
+
+    # ── Letter-vs-category discrepancy score (Wright et al. 2022) -- lives
+    # on this side (user request, 2026-11-15), next to the "no bin plot"
+    # placeholder. Experimental: single trial per task, and doesn't show
+    # the group separation the paper reports on this dataset -- see
+    # pipelines/score_fluency_discrepancy.py.
+    @render.ui
+    def discrepancy_card():
+        row = FLUENCY_DISCREPANCY_BY_PARTICIPANT.get(str(participant_id()))
+        if not row:
+            return ui.div(style=f"height:{_BIN_PLOT_BLOCK_HEIGHT};")
+        value = row.get("discrepancy_score")
+        value_str = f"{value:+.2f}" if value is not None and value == value else "—"
+        return ui.div(
+            # Title and "Experimental" badge share one row (saves a line in
+            # this fixed-height card).
+            ui.div(
+                ui.span("Fluency discrepancy score", style="font-weight:600;font-size:1.05em;"),
+                ui.span("Experimental", style=(
+                    "background:#9e9e9e;color:white;border-radius:12px;"
+                    "padding:2px 10px;font-size:0.8em;font-weight:600;"
+                    "white-space:nowrap;"
+                )),
+                style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;",
+            ),
+            ui.div(value_str, style="font-size:1.6em;font-weight:700;margin:2px 0;"),
+            ui.div(
+                "Compares how far letter fluency and category fluency each "
+                "fall from the healthy-control average (letter z-score minus "
+                "category z-score). Positive values mean category fluency is "
+                "lower relative to letter fluency.",
+                style="color:#6c757d;font-size:12px;margin-bottom:6px;text-wrap:pretty;",
+            ),
+            output_widget("discrepancy_graph"),
+            style=(
+                "background:white;border:1px solid #e1e8ef;border-left:4px solid #9e9e9e;"
+                "border-radius:10px;padding:16px 18px;"
+                f"height:{_BIN_PLOT_BLOCK_HEIGHT};overflow:hidden;"
+                "box-shadow:0 2px 8px rgba(35,55,75,0.05);"
+            ),
+        )
+
+    @render_widget
+    def discrepancy_graph():
+        row = FLUENCY_DISCREPANCY_BY_PARTICIPANT.get(str(participant_id()))
+        value = row.get("discrepancy_score") if row else None
+        return _discrepancy_distribution_figure(value)
 
     @render.ui
     def word_display():

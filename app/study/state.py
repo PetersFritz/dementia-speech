@@ -6,13 +6,23 @@ Form — the local server never needs to talk to Google. Progress is recovered
 by reading the token's session file, so closing and reopening the same
 emailed link resumes where the rater left off.
 
-Persistence is one JSON file per token (data/study/sessions/<token>.json),
+Persistence is one JSON file per token (<data dir>/study/sessions/<token>.json),
 written via write-temp-then-atomic-rename, rather than a single shared
 SQLite database. The deployment target for the study server isn't decided
 yet and may end up on a network-mounted filesystem (as this dev checkout
 currently is) — CIFS mounts here were confirmed not to support the file
 locking SQLite requires, while atomic rename-into-place does not depend on
 byte-range locking and works on both local disks and this network mount.
+
+Paths come from DATA_DIR (dementia_speech.paths), not a path relative to
+this repo -- the data directory lives outside the repo on purpose (data
+governance), same as every other raw/processed path in this project. A
+REPO_ROOT-relative META_PATH here was a bug (confirmed 2026-11-19:
+FileNotFoundError on this file's old hardcoded path once the data dir had
+actually been moved out, per that governance decision) -- rater session
+files containing a diagnosis guess per participant_id are governed data
+too, so SESSIONS_DIR belongs in DATA_DIR alongside raw/processed, not
+inside the git repo.
 """
 import hashlib
 import json
@@ -25,11 +35,11 @@ from pathlib import Path
 
 import pandas as pd
 
+from dementia_speech.paths import DATA_DIR
 from shared import ct_metrics_df
 
-REPO_ROOT = Path(__file__).parent.parent.parent
-META_PATH = REPO_ROOT / "data" / "raw" / "meta-info.csv"
-SESSIONS_DIR = REPO_ROOT / "data" / "study" / "sessions"
+META_PATH = DATA_DIR / "raw" / "meta-info.csv"
+SESSIONS_DIR = DATA_DIR / "study" / "sessions"
 
 N_CASES = 20
 DIAGNOSES = ["HC", "MCI", "Dementia"]

@@ -1,7 +1,10 @@
-"""Summary tab -- a cross-task "at a glance" view: a written divergence
-summary and a radar chart spanning Phonemic Fluency, Semantic Fluency,
-Picture Description, a general-language axis, Finance management, and
-Recent News (user request, 2026-11-12).
+"""Summary tab -- a cross-task "at a glance" view: demographics, a written
+divergence summary, and a radar chart spanning Phonemic Fluency, Semantic
+Fluency, Picture Description, a general-language axis, Finance management,
+and Recent News (user request, 2026-11-12). Demographics moved here from
+the Overview tab (user request, 2026-11-15) -- this is now the first thing
+a clinician sees for a participant, so age/gender/diagnosis belongs here
+rather than one tab over.
 
 Deliberately continuous-percentile, not Typical/Borderline/Atypical: this
 project removed categorical banding project-wide (2026-11-14, see
@@ -31,18 +34,21 @@ Axes:
     it's EXPLORATORY in Cookie Theft's own categorization (d=-0.34 HC vs
     Dementia, weaker than the 3 headline measures, demoted for that
     reason, not dropped) -- hence the honest "(exploratory)" suffix on
-    the axis label, same convention as "Recent News (placeholder)".
+    the axis label, same convention as "Recent News (exploratory)".
   - Finance management: not a percentile against HC (finance.csv has no
     continuous measure to norm) -- a plain 0-100 score from
     changed_recently/change_reason, on the same low=concerning scale by
     construction (100 = no recent change; 0 = changed specifically
     because of cognitive decline). See _finance_score.
-  - Recent News: PLACEHOLDER. STN scoring hasn't run yet (HPC down as of
-    2026-11-12) -- NEWS_PLACEHOLDER_SCORE is a fixed, identical value for
-    every participant, not real data, so it can never be mistaken for a
-    genuine finding. Swap this axis over to real data (see
-    pipelines/score_news.py's news_scores.csv, `score` column, rescaled
-    0-3 -> 0-100) once that pipeline has actually run.
+  - Recent News (exploratory): real per-participant data as of 2026-11-15,
+    from news_scores.csv's `score` column (0-3, category-based -- see
+    dementia_speech.tasks.news.scoring), rescaled to 0-100. Still
+    EXPLORATORY, not headline: per the Tier 2 TODO and
+    docs/news_scoring_rules.md, this needs a hand-rating pass (50-100
+    answers) against the pipeline's own output before it's shown as more
+    than descriptive -- that hasn't happened yet. None (missing, not 0)
+    for 'unverifiable'/'no_date' categories, or a participant with no STN
+    transcript at all -- see _news_score.
 
 Deliberately NOT on the chart: memory complaints and who-is-concerned.
 More self-reported complaints isn't reliably "worse" -- MCI often
@@ -62,7 +68,7 @@ from shinywidgets import output_widget, render_widget
 from shared import (
     pft_metrics_df, sft_metrics_df, ct_metrics_df, DEMOGRAPHICS,
     FINANCE_BY_PARTICIPANT, MEMORY_COMPLAINTS_BY_PARTICIPANT,
-    WHO_CONCERNED_BY_PARTICIPANT, GROUP_COLOURS,
+    WHO_CONCERNED_BY_PARTICIPANT, NEWS_BY_PARTICIPANT, GROUP_COLOURS,
 )
 from modules.phonemic_fluency import HC_STATS as _PFT_HC_STATS, PFT_HEADLINE_Z as _PFT_Z
 from modules.semantic_fluency import HC_STATS as _SFT_HC_STATS, SFT_HEADLINE_Z as _SFT_Z
@@ -101,13 +107,13 @@ _CT_IU_SCORE = _measure_by_key(_CT_HEADLINE, "iu_score")
 # own categorization, not HEADLINE (d=-0.34 HC vs Dementia, weaker than
 # the 3 headline measures, demoted for that reason, not dropped) -- so
 # this axis is honestly labelled "(exploratory)" below, same convention as
-# "Recent News (placeholder)".
+# "Recent News (exploratory)".
 _CT_MATTR = _measure_by_key(_CT_EXPLORATORY, "mattr")
 
-# Fixed, identical for every participant -- see module docstring. Do not
-# make this vary by participant_id; the whole point is that it must never
-# look like a real finding.
-NEWS_PLACEHOLDER_SCORE = 50.0
+# news_scores.csv's `score` column is 0-3 (SCORE_BY_CATEGORY in
+# dementia_speech.tasks.news.scoring) -- rescaled onto the same 0-100 scale
+# as every other axis here.
+_NEWS_MAX_SCORE = 3
 
 # changed_recently == "yes" + this change_reason -> this score. "unclear"
 # (missing from this dict) scores None (missing, not a guess) -- same
@@ -160,6 +166,16 @@ def _finance_score(participant_id):
     return None  # "unclear"
 
 
+def _news_score(participant_id):
+    row = NEWS_BY_PARTICIPANT.get(str(participant_id))
+    if not row:
+        return None
+    score = row.get("score")
+    if score is None or pd.isna(score):
+        return None  # unverifiable/no_date -- a gap in the measure, not a 0
+    return float(score) / _NEWS_MAX_SCORE * 100
+
+
 def _domain_scores(participant_id):
     """{axis_label: (percentile_or_score, is_placeholder)} for all six axes,
     in the fixed order the radar chart and bullets both use."""
@@ -170,7 +186,7 @@ def _domain_scores(participant_id):
         "Picture Description": (_percentile_for(ct_metrics_df, _CT_HC_STATS, _CT_IU_SCORE, participant_id, age), False),
         "General Language (exploratory)": (_percentile_for(ct_metrics_df, _CT_HC_STATS, _CT_MATTR, participant_id, age), False),
         "Finance Management": (_finance_score(participant_id), False),
-        "Recent News (placeholder)": (NEWS_PLACEHOLDER_SCORE, True),
+        "Recent News (exploratory)": (_news_score(participant_id), False),
     }
 
 
@@ -193,13 +209,15 @@ def _group_mean_percentiles(z_df: pd.DataFrame, measure_key: str) -> dict:
     return {g: (float(means[g]) if g in means.index and pd.notna(means[g]) else None) for g in _GROUPS}
 
 
-def _finance_group_means() -> dict:
-    """{group: mean finance score}, from every participant with a scoreable
-    finance answer (see _finance_score) -- "unclear"/missing participants
-    are excluded from the average entirely, not counted as 0."""
+def _mean_by_group(score_fn) -> dict:
+    """{group: mean score}, from every participant score_fn resolves to a
+    real value for -- missing/unscoreable participants (score_fn returns
+    None) are excluded from the average entirely, not counted as 0. Shared
+    between Finance and Recent News, the two axes with no HC-norm percentile
+    to average via _group_mean_percentiles."""
     rows = []
     for pid in DEMOGRAPHICS:
-        score = _finance_score(pid)
+        score = score_fn(pid)
         if score is not None:
             rows.append({"diagnosis": DEMOGRAPHICS[pid].get("diagnosis"), "score": score})
     if not rows:
@@ -209,18 +227,14 @@ def _finance_group_means() -> dict:
 
 
 # Computed once at import time, same convention as HC_STATS elsewhere --
-# doesn't depend on which participant is selected. Recent News has no real
-# per-participant data yet (see NEWS_PLACEHOLDER_SCORE), so its "group
-# means" are the same flat placeholder for every group -- not a finding,
-# just keeping that axis visually present on the chart until score_news.py
-# has actually run.
+# doesn't depend on which participant is selected.
 _DOMAIN_GROUP_MEANS = {
     "Phonemic Fluency": _group_mean_percentiles(_PFT_Z, _PFT_C.key),
     "Semantic Fluency": _group_mean_percentiles(_SFT_Z, _SFT_C.key),
     "Picture Description": _group_mean_percentiles(_CT_Z, _CT_IU_SCORE.key),
     "General Language (exploratory)": _group_mean_percentiles(_CT_Z, _CT_MATTR.key),
-    "Finance Management": _finance_group_means(),
-    "Recent News (placeholder)": {g: NEWS_PLACEHOLDER_SCORE for g in _GROUPS},
+    "Finance Management": _mean_by_group(_finance_score),
+    "Recent News (exploratory)": _mean_by_group(_news_score),
 }
 
 
@@ -243,6 +257,25 @@ def _insight_mismatch_bullet(participant_id):
             "the gap between self- and informant-report directly."
         )
     return None
+
+
+def _news_status_bullet(participant_id):
+    """Recent News always gets a caveat, even when it scored fine (see
+    module docstring -- exploratory, not yet checked for a real group
+    difference or hand-rated) -- plus, when applicable, the specific reason
+    this participant's own answer couldn't be scored at all (score is None
+    for 'unverifiable'/'no_date', or if there's no STN row for them)."""
+    row = NEWS_BY_PARTICIPANT.get(str(participant_id))
+    category = row.get("category") if row else "no_date"
+    reason = {
+        "no_date": "no assessment date is on record for this participant yet",
+        "unverifiable": "the answer was specific but didn't match any cached news event",
+    }.get(category)
+    base = (
+        "Recent News is exploratory -- not yet checked for a real group "
+        "difference, shown for reference only."
+    )
+    return f"Recent-news recall could not be scored ({reason}). {base}" if reason else base
 
 
 def _ordinal(n: int) -> str:
@@ -272,11 +305,7 @@ def generate_bullets(participant_id) -> list[str]:
     if mismatch:
         bullets.append(mismatch)
 
-    bullets.append(
-        "Recent-news recall has not been scored for this participant yet "
-        "(pending an HPC run) -- the Recent News axis on the chart is a "
-        "placeholder, not a real finding."
-    )
+    bullets.append(_news_status_bullet(participant_id))
 
     if not divergent and not mismatch:
         bullets.insert(0, "No notable divergence from same-age peers found across the measures below.")
@@ -286,7 +315,7 @@ def generate_bullets(participant_id) -> list[str]:
 
 _RADAR_AXES = [
     "Phonemic Fluency", "Semantic Fluency", "Picture Description",
-    "General Language (exploratory)", "Finance Management", "Recent News (placeholder)",
+    "General Language (exploratory)", "Finance Management", "Recent News (exploratory)",
 ]
 
 
@@ -359,6 +388,12 @@ def summary_ui():
             ),
         ),
 
+        ui.div(
+            ui.h5("Demographics", style=_SECTION_HEADER_STYLE),
+            ui.output_ui("demographics_card"),
+            style="margin-bottom:26px;",
+        ),
+
         ui.layout_columns(
             ui.div(
                 ui.h5("Key findings", style=_SECTION_HEADER_STYLE),
@@ -376,12 +411,13 @@ def summary_ui():
                 ui.p(
                     "Each axis is an age-adjusted percentile (low = further "
                     "from the healthy-control reference, regardless of "
-                    "direction) except Finance Management (a 0-100 score "
-                    "from reported change/reason, not an HC percentile) and "
-                    "Recent News, which is a placeholder pending scoring. "
-                    "General Language is exploratory -- a weaker, "
-                    "not-yet-headline signal, shown for reference. Dotted "
-                    "lines show each diagnostic group's own mean.",
+                    "direction) except Finance Management and Recent News, "
+                    "which are 0-100 scores from reported change/reason and "
+                    "news-recall accuracy respectively, not HC percentiles. "
+                    "General Language and Recent News are both "
+                    "exploratory -- weaker, not-yet-headline signals shown "
+                    "for reference, not validated findings. Dotted lines "
+                    "show each diagnostic group's own mean.",
                     style=_SECTION_CAPTION_STYLE,
                 ),
                 output_widget("radar_chart"),
@@ -395,7 +431,38 @@ def summary_ui():
 
 
 @module.server
-def summary_server(input, output, session, participant_id):
+def summary_server(input, output, session, participant_id, show_diagnosis=True):
+    """show_diagnosis=False hides the Diagnosis field in demographics_card --
+    used by study_app.py (blinded rater study, 2026-11-19): a rater guessing
+    the diagnosis can't be shown it on the same page. Nothing else on this
+    tab leaks the participant's own diagnosis -- every other "diagnosis"
+    reference here (_group_mean_percentiles, _mean_by_group) is a group-level
+    aggregate shown identically regardless of which participant is selected,
+    not this participant's own label."""
+
+    @render.ui
+    def demographics_card():
+        demo = DEMOGRAPHICS.get(str(participant_id()), {})
+        age = demo.get("age")
+        gender = demo.get("gender")
+
+        def field(label, value):
+            return ui.div(
+                ui.div(label, style="color:#666;font-size:0.82em;"),
+                ui.div(
+                    str(value) if pd.notna(value) else "—",
+                    style="font-size:1.4em;font-weight:700;",
+                ),
+            )
+
+        fields = [field("Age", age), field("Gender", gender)]
+        if show_diagnosis:
+            fields.append(field("Diagnosis", demo.get("diagnosis")))
+
+        return ui.div(
+            *fields,
+            style=_PANEL_STYLE + "display:flex;gap:32px;",
+        )
 
     @render.ui
     def bullets_panel():
